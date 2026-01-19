@@ -81,10 +81,10 @@ builder.Services.AddAuthentication(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
     {
-        ValidateIssuer = true,              // Check who issued the token
-        ValidateAudience = true,            // Check who can use the token
-        ValidateLifetime = true,            // Check if token is expired
-        ValidateIssuerSigningKey = true,   // Verify token signature
+        ValidateIssuer = true, // Check who issued the token
+        ValidateAudience = true, // Check who can use the token
+        ValidateLifetime = true, // Check if token is expired
+        ValidateIssuerSigningKey = true, // Verify token signature
         ValidIssuer = jwtSettings["Issuer"],
         ValidAudience = jwtSettings["Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey))
@@ -100,14 +100,16 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 
 var app = builder.Build();
 
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5264";
+app.Urls.Add($"http://0.0.0.0:{port}");
+
 // ===== 5. CONFIGURE HTTP REQUEST PIPELINE =====
 
 // Enable Swagger in Development mode
-if (app.Environment.IsDevelopment())
-{
+
     app.UseSwagger();
     app.UseSwaggerUI();
-}
+
 
 // Redirect HTTP to HTTPS
 app.UseHttpsRedirection();
