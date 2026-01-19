@@ -1,20 +1,16 @@
-#See https://aka.ms/containerfastmode to understand how Visual Studio uses this Dockerfile to build your images for faster debugging.
-
 FROM mcr.microsoft.com/dotnet/aspnet:7.0 AS base
 WORKDIR /app
 EXPOSE 80
-EXPOSE 443
 
 FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
 WORKDIR /src
-COPY ["Linder-DatingApp/Linder-DatingApp.csproj", "Linder-DatingApp/"]
-RUN dotnet restore "Linder-DatingApp/Linder-DatingApp.csproj"
+COPY ["Linder-DatingApp.csproj", "./"]
+RUN dotnet restore "Linder-DatingApp.csproj"
 COPY . .
-WORKDIR "/src/Linder-DatingApp"
 RUN dotnet build "Linder-DatingApp.csproj" -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "Linder-DatingApp.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "Linder-DatingApp.csproj" -c Release -o /app/publish
 
 FROM base AS final
 WORKDIR /app
