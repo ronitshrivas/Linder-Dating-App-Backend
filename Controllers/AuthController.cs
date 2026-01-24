@@ -40,6 +40,23 @@ namespace AuthAPI.Controllers
             return BadRequest(result);  // 400 Bad Request
         }
 
+        [HttpGet("signup-options")]
+        public IActionResult GetSignupOptions()
+        {
+            return Ok(new
+            {
+                hobbies = AppConstants.AvailableHobbies,
+                interests = AppConstants.AvailableInterests,
+                nakshatras = AppConstants.Nakshatras,
+                rashiSigns = AppConstants.RashiSigns,
+                zodiacSigns = AppConstants.ZodiacSigns,
+                chineseZodiac = AppConstants.ChineseZodiacSigns,
+                genders = new[] { "Male", "Female", "Other" },
+                minPhotos = 6,
+                minAge = 18
+            });
+        }
+
         // POST: api/auth/login
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)

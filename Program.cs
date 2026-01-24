@@ -3,7 +3,6 @@
 
 using AuthAPI.Data;
 using AuthAPI.Services;
-using Linder.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
