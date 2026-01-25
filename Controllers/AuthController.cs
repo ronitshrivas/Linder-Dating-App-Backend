@@ -7,105 +7,147 @@ using System.Security.Claims;
 namespace AuthAPI.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]  // Routes will be: api/auth/signup, api/auth/login
+    [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
 
-        // Constructor - dependency injection brings in AuthService
         public AuthController(IAuthService authService)
         {
             _authService = authService;
         }
 
-        // POST: api/auth/signup
-        [HttpPost("signup")]
-        public async Task<IActionResult> Signup([FromBody] SignupRequest request)
+        // ===== STEP 1: BASIC REGISTRATION =====
+        // POST: api/auth/register
+        [HttpPost("register")]
+        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
-            // Validate model
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            // Call service to register user
-            var result = await _authService.SignupAsync(request);
+            var result = await _authService.RegisterAsync(request);
 
-            // Return response based on success/failure
             if (result.Success)
             {
-                return Ok(result);  // 200 OK
+                return Ok(result);
             }
 
-            return BadRequest(result);  // 400 Bad Request
+            return BadRequest(result);
         }
 
+        // ===== STEP 2: COMPLETE PROFILE =====
+        // POST: api/auth/complete-profile
+        [Authorize] // Requires JWT token from Step 1
+        [HttpPost("complete-profile")]
+        public async Task<IActionResult> CompleteProfile([FromBody] CompleteProfileRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            var result = await _authService.CompleteProfileAsync(userId, request);
+
+            if (result.Success)
+            {
+                return Ok(result);
+            }
+
+            return BadRequest(result);
+        }
+
+        // ===== GET PROFILE COMPLETION STATUS =====
+        // GET: api/auth/profile-status
+        [Authorize]
+        [HttpGet("profile-status")]
+        public async Task<IActionResult> GetProfileStatus()
+        {
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            var status = await _authService.GetProfileStatusAsync(userId);
+
+            return Ok(status);
+        }
+
+        // ===== GET SIGNUP OPTIONS =====
+        // GET: api/auth/signup-options
         [HttpGet("signup-options")]
         public IActionResult GetSignupOptions()
         {
             return Ok(new
             {
+                genders = new[] { "Male", "Female", "Other", "Prefer not to say" },
+                interestedInOptions = new[] { "Male", "Female", "Both" },
+                minPhotos = 2,
+                maxPhotos = 6,
+                minAge = 18,
+                maxAge = 100,
+                minDistance = 1,
+                maxDistance = 500,
+                minHeight = 100,
+                maxHeight = 250,
                 hobbies = AppConstants.AvailableHobbies,
                 interests = AppConstants.AvailableInterests,
                 nakshatras = AppConstants.Nakshatras,
                 rashiSigns = AppConstants.RashiSigns,
                 zodiacSigns = AppConstants.ZodiacSigns,
-                chineseZodiac = AppConstants.ChineseZodiacSigns,
-                genders = new[] { "Male", "Female", "Other" },
-                minPhotos = 6,
-                minAge = 18
+                chineseZodiac = AppConstants.ChineseZodiacSigns
             });
         }
 
+        // ===== LOGIN =====
         // POST: api/auth/login
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            // Validate model
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            // Call service to login user
             var result = await _authService.LoginAsync(request);
 
-            // Return response based on success/failure
             if (result.Success)
             {
-                return Ok(result);  // 200 OK
+                return Ok(result);
             }
 
-            return Unauthorized(result);  // 401 Unauthorized
+            return Unauthorized(result);
         }
 
-        // GET: api/auth/profile (Protected route example)
-        [Authorize]  // This requires a valid JWT token
+        // ===== GET PROFILE (Protected) =====
+        // GET: api/auth/profile
+        [Authorize]
         [HttpGet("profile")]
         public IActionResult GetProfile()
         {
-            // Get user info from JWT token claims
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var email = User.FindFirst(ClaimTypes.Email)?.Value;
             var name = User.FindFirst(ClaimTypes.Name)?.Value;
+            var profileComplete = User.FindFirst("ProfileComplete")?.Value;
 
             return Ok(new
             {
                 userId,
                 email,
                 name,
+                profileComplete = bool.Parse(profileComplete ?? "false"),
                 message = "This is a protected route!"
             });
         }
 
-        // GET: api/auth/test (Public route example)
+        // ===== TEST ENDPOINT =====
+        // GET: api/auth/test
         [HttpGet("test")]
         public IActionResult Test()
         {
             return Ok(new
             {
                 message = "API is working!",
-                timestamp = DateTime.UtcNow
+                timestamp = DateTime.UtcNow,
+                version = "2.0 - Two-Step Registration"
             });
         }
     }

@@ -39,8 +39,8 @@ namespace AuthAPI.Services
             if (!string.IsNullOrWhiteSpace(request.FullName))
                 user.FullName = request.FullName;
 
-            if (!string.IsNullOrWhiteSpace(request.PhoneNumber))
-                user.PhoneNumber = request.PhoneNumber;
+            //if (!string.IsNullOrWhiteSpace(request.PhoneNumber))
+            //    user.n = request.PhoneNumber;
 
             if (request.DateOfBirth.HasValue)
             {
@@ -145,7 +145,7 @@ namespace AuthAPI.Services
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
-                PhoneNumber = user.PhoneNumber,
+               // PhoneNumber = user.PhoneNumber,
                 DateOfBirth = user.DateOfBirth,
                 Age = user.Age,
                 Gender = user.Gender,

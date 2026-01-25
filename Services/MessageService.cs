@@ -168,7 +168,7 @@ namespace AuthAPI.Services
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
-                PhoneNumber = user.PhoneNumber,
+                //PhoneNumber = user.PhoneNumber,
                 DateOfBirth = user.DateOfBirth,
                 Age = user.Age,
                 Gender = user.Gender,

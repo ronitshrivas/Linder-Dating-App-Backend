@@ -9,6 +9,14 @@ using System.Text.Json;
 
 namespace AuthAPI.Services
 {
+    //public interface IAuthService
+    //{
+    //    Task<RegisterResponse> RegisterAsync(RegisterRequest request);
+    //    Task<CompleteProfileResponse> CompleteProfileAsync(int userId, CompleteProfileRequest request);
+    //    Task<ProfileStatusDto> GetProfileStatusAsync(int userId);
+    //    Task<AuthResponse> LoginAsync(LoginRequest request);
+    //}
+
     public class AuthService : IAuthService
     {
         private readonly AppDbContext _context;
@@ -20,28 +28,18 @@ namespace AuthAPI.Services
             _configuration = configuration;
         }
 
-        public async Task<AuthResponse> SignupAsync(SignupRequest request)
+        // ===== STEP 1: BASIC REGISTRATION =====
+        public async Task<RegisterResponse> RegisterAsync(RegisterRequest request)
         {
             // Validate required fields
             if (string.IsNullOrWhiteSpace(request.Email) ||
                 string.IsNullOrWhiteSpace(request.Password) ||
                 string.IsNullOrWhiteSpace(request.FullName))
             {
-                return new AuthResponse
+                return new RegisterResponse
                 {
                     Success = false,
-                    Message = "Email, password, and full name are required"
-                };
-            }
-
-            // Validate age (must be 18+)
-            var age = CalculateAge(request.DateOfBirth);
-            if (age < 18)
-            {
-                return new AuthResponse
-                {
-                    Success = false,
-                    Message = "You must be at least 18 years old to register"
+                    Message = "Full name, email, and password are required"
                 };
             }
 
@@ -51,60 +49,23 @@ namespace AuthAPI.Services
 
             if (existingUser != null)
             {
-                return new AuthResponse
+                return new RegisterResponse
                 {
                     Success = false,
                     Message = "User with this email already exists"
                 };
             }
 
-            // Validate minimum 6 photos
-            if (request.ProfilePhotos == null || request.ProfilePhotos.Count < 6)
-            {
-                return new AuthResponse
-                {
-                    Success = false,
-                    Message = "Please upload at least 6 profile photos"
-                };
-            }
-
             // Hash password
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
-            // Create user
+            // Create user with basic info only
             var user = new User
             {
                 FullName = request.FullName,
                 Email = request.Email,
                 PasswordHash = passwordHash,
-                PhoneNumber = request.PhoneNumber,
-                DateOfBirth = request.DateOfBirth,
-                Age = age,
-                Gender = request.Gender,
-                MaxDistance = request.MaxDistance,
-                City = request.City,
-                State = request.State,
-
-                // Convert lists to JSON strings for storage
-                ProfilePhotos = JsonSerializer.Serialize(request.ProfilePhotos),
-                Hobbies = JsonSerializer.Serialize(request.Hobbies),
-                Interests = JsonSerializer.Serialize(request.Interests),
-
-                // Horoscope details
-                ZodiacSign = request.ZodiacSign ?? string.Empty,
-                SunSign = request.SunSign ?? string.Empty,
-                MoonSign = request.MoonSign ?? string.Empty,
-                RashiSign = request.RashiSign ?? string.Empty,
-                Nakshatra = request.Nakshatra ?? string.Empty,
-                ChineseZodiac = request.ChineseZodiac ?? string.Empty,
-
-                // Optional details
-                Bio = request.Bio,
-                Occupation = request.Occupation,
-                Education = request.Education,
-                Height = request.Height,
-
-                IsProfileComplete = true,
+                IsProfileComplete = false, // Profile NOT complete yet
                 CreatedAt = DateTime.UtcNow,
                 LastActive = DateTime.UtcNow
             };
@@ -112,17 +73,190 @@ namespace AuthAPI.Services
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
+            // Generate JWT token
             var token = GenerateJwtToken(user);
 
-            return new AuthResponse
+            return new RegisterResponse
             {
                 Success = true,
-                Message = "User registered successfully",
+                Message = "Registration successful! Please complete your profile.",
                 Token = token,
+                UserId = user.Id,
+                Email = user.Email,
+                ProfileComplete = false
+            };
+        }
+
+        // ===== STEP 2: COMPLETE PROFILE =====
+        public async Task<CompleteProfileResponse> CompleteProfileAsync(int userId, CompleteProfileRequest request)
+        {
+            var user = await _context.Users.FindAsync(userId);
+
+            if (user == null)
+            {
+                return new CompleteProfileResponse
+                {
+                    Success = false,
+                    Message = "User not found"
+                };
+            }
+
+            if (user.IsProfileComplete)
+            {
+                return new CompleteProfileResponse
+                {
+                    Success = false,
+                    Message = "Profile already completed"
+                };
+            }
+
+            // Validate minimum photos (2 required)
+            if (request.ProfilePhotos == null || request.ProfilePhotos.Count < 2)
+            {
+                return new CompleteProfileResponse
+                {
+                    Success = false,
+                    Message = "Please upload at least 2 photos (maximum 6)"
+                };
+            }
+
+            // Validate maximum photos (6 max)
+            if (request.ProfilePhotos.Count > 6)
+            {
+                return new CompleteProfileResponse
+                {
+                    Success = false,
+                    Message = "Maximum 6 photos allowed"
+                };
+            }
+
+            // Validate age (must be 18+)
+            var age = CalculateAge(request.DateOfBirth);
+            if (age < 18)
+            {
+                return new CompleteProfileResponse
+                {
+                    Success = false,
+                    Message = "You must be at least 18 years old"
+                };
+            }
+
+            // Validate preferred age range
+            if (request.PreferredAgeMin > request.PreferredAgeMax)
+            {
+                return new CompleteProfileResponse
+                {
+                    Success = false,
+                    Message = "Minimum age cannot be greater than maximum age"
+                };
+            }
+
+            // Handle "Prefer not to say" gender
+            if (request.Gender == "Prefer not to say")
+            {
+                if (string.IsNullOrWhiteSpace(request.InterestedIn))
+                {
+                    return new CompleteProfileResponse
+                    {
+                        Success = false,
+                        Message = "Please select who you're interested in (Male, Female, or Both)"
+                    };
+                }
+
+                if (request.InterestedIn != "Male" &&
+                    request.InterestedIn != "Female" &&
+                    request.InterestedIn != "Both")
+                {
+                    return new CompleteProfileResponse
+                    {
+                        Success = false,
+                        Message = "Interested in must be: Male, Female, or Both"
+                    };
+                }
+            }
+
+            // Update user with profile details
+            user.DateOfBirth = request.DateOfBirth;
+            user.Age = age;
+            user.Gender = request.Gender;
+            user.InterestedIn = request.InterestedIn;
+            user.MaxDistance = request.MaxDistance;
+            user.Address = request.Address;
+            user.City = request.City;
+            user.State = request.State;
+            user.Country = request.Country;
+            user.PreferredAgeMin = request.PreferredAgeMin;
+            user.PreferredAgeMax = request.PreferredAgeMax;
+
+            // Save photos
+            user.ProfilePhotos = JsonSerializer.Serialize(request.ProfilePhotos);
+
+            // Save optional fields
+            user.Hobbies = JsonSerializer.Serialize(request.Hobbies ?? new List<string>());
+            user.Interests = JsonSerializer.Serialize(request.Interests ?? new List<string>());
+            user.ZodiacSign = request.ZodiacSign ?? string.Empty;
+            user.SunSign = request.SunSign ?? string.Empty;
+            user.MoonSign = request.MoonSign ?? string.Empty;
+            user.RashiSign = request.RashiSign ?? string.Empty;
+            user.Nakshatra = request.Nakshatra ?? string.Empty;
+            user.ChineseZodiac = request.ChineseZodiac ?? string.Empty;
+            user.Bio = request.Bio;
+            user.Occupation = request.Occupation;
+            user.Education = request.Education;
+            user.Height = request.Height;
+
+            // Mark profile as complete
+            user.IsProfileComplete = true;
+            user.LastActive = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return new CompleteProfileResponse
+            {
+                Success = true,
+                Message = "Profile completed successfully!",
                 User = MapToUserDto(user)
             };
         }
 
+        // ===== GET PROFILE STATUS =====
+        public async Task<ProfileStatusDto> GetProfileStatusAsync(int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+
+            if (user == null)
+            {
+                return new ProfileStatusDto
+                {
+                    IsProfileComplete = false,
+                    CurrentStep = "not_found",
+                    MissingFields = new List<string> { "User not found" }
+                };
+            }
+
+            var status = new ProfileStatusDto
+            {
+                IsProfileComplete = user.IsProfileComplete,
+                CurrentStep = user.IsProfileComplete ? "completed" : "registered"
+            };
+
+            if (!user.IsProfileComplete)
+            {
+                status.MissingFields = new List<string>
+                {
+                    "Profile photos (minimum 2)",
+                    "Date of birth",
+                    "Gender",
+                    "Address",
+                    "Preferred age range",
+                    "Maximum distance"
+                };
+            }
+
+            return status;
+        }
+
+        // ===== LOGIN =====
         public async Task<AuthResponse> LoginAsync(LoginRequest request)
         {
             var user = await _context.Users
@@ -154,14 +288,21 @@ namespace AuthAPI.Services
 
             var token = GenerateJwtToken(user);
 
+            // Check if profile is complete
+            var message = user.IsProfileComplete
+                ? "Login successful"
+                : "Login successful! Please complete your profile.";
+
             return new AuthResponse
             {
                 Success = true,
-                Message = "Login successful",
+                Message = message,
                 Token = token,
                 User = MapToUserDto(user)
             };
         }
+
+        // ===== HELPER METHODS =====
 
         private int CalculateAge(DateTime dateOfBirth)
         {
@@ -178,31 +319,26 @@ namespace AuthAPI.Services
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
-                PhoneNumber = user.PhoneNumber,
+                PhoneNumber = string.Empty, // Not used in new flow
                 DateOfBirth = user.DateOfBirth,
                 Age = user.Age,
                 Gender = user.Gender,
                 MaxDistance = user.MaxDistance,
                 City = user.City,
                 State = user.State,
-
-                // Deserialize JSON strings back to lists
                 ProfilePhotos = JsonSerializer.Deserialize<List<string>>(user.ProfilePhotos) ?? new List<string>(),
                 Hobbies = JsonSerializer.Deserialize<List<string>>(user.Hobbies) ?? new List<string>(),
                 Interests = JsonSerializer.Deserialize<List<string>>(user.Interests) ?? new List<string>(),
-
                 ZodiacSign = user.ZodiacSign,
                 SunSign = user.SunSign,
                 MoonSign = user.MoonSign,
                 RashiSign = user.RashiSign,
                 Nakshatra = user.Nakshatra,
                 ChineseZodiac = user.ChineseZodiac,
-
                 Bio = user.Bio,
                 Occupation = user.Occupation,
                 Education = user.Education,
                 Height = user.Height,
-
                 IsProfileComplete = user.IsProfileComplete,
                 CreatedAt = user.CreatedAt
             };
@@ -214,14 +350,20 @@ namespace AuthAPI.Services
             var secretKey = jwtSettings["SecretKey"] ?? "YourSuperSecretKeyMinimum32CharactersLong!123";
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
 
-            var claims = new[]
+            var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Email, user.Email),
                 new Claim(ClaimTypes.Name, user.FullName),
-                new Claim("Gender", user.Gender),
-                new Claim("Age", user.Age.ToString())
+                new Claim("ProfileComplete", user.IsProfileComplete.ToString())
             };
+
+            // Add gender and age only if profile is complete
+            if (user.IsProfileComplete)
+            {
+                claims.Add(new Claim("Gender", user.Gender));
+                claims.Add(new Claim("Age", user.Age.ToString()));
+            }
 
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
             var token = new JwtSecurityToken(
