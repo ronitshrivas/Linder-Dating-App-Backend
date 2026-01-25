@@ -9,6 +9,54 @@ namespace AuthAPI.Services
     {
         private readonly AppDbContext _context;
 
+
+        // Add this method to the existing MatchingService.cs
+
+        public class MatchStats
+        {
+            public int TotalMatches { get; set; }
+            public int TotalLikes { get; set; }
+            public int TotalPasses { get; set; }
+            public int LikesReceived { get; set; }
+            public int SuperLikes { get; set; }
+            public double MatchRate { get; set; }
+        }
+
+        // Add this to IMatchingService interface
+        //Task<MatchStats> GetMatchStatsAsync(int userId);
+
+        // Add this implementation to MatchingService class
+        public async Task<MatchStats> GetMatchStatsAsync(int userId)
+        {
+            var totalMatches = await _context.Matches
+                .CountAsync(m => m.UserId == userId && m.IsMatch);
+
+            var totalLikes = await _context.Matches
+                .CountAsync(m => m.UserId == userId && m.Action == SwipeAction.Like);
+
+            var totalPasses = await _context.Matches
+                .CountAsync(m => m.UserId == userId && m.Action == SwipeAction.Pass);
+
+            var likesReceived = await _context.Matches
+                .CountAsync(m => m.TargetUserId == userId && m.Action == SwipeAction.Like);
+
+            var superLikes = await _context.Matches
+                .CountAsync(m => m.UserId == userId && m.Action == SwipeAction.SuperLike);
+
+            var matchRate = totalLikes > 0 ? (double)totalMatches / totalLikes * 100 : 0;
+
+            return new MatchStats
+            {
+                TotalMatches = totalMatches,
+                TotalLikes = totalLikes,
+                TotalPasses = totalPasses,
+                LikesReceived = likesReceived,
+                SuperLikes = superLikes,
+                MatchRate = Math.Round(matchRate, 2)
+            };
+        }
+
+
         public MatchingService(AppDbContext context)
         {
             _context = context;
@@ -322,4 +370,7 @@ namespace AuthAPI.Services
             };
         }
     }
+
+
+
 }

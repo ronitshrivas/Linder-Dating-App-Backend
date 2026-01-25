@@ -5,11 +5,12 @@ namespace AuthAPI.Models
     public class Match
     {
         public int Id { get; set; }
-        public int UserId { get; set; } // Who swiped
-        public int TargetUserId { get; set; } // Who they swiped on
-        public SwipeAction Action { get; set; } // Like or Pass
-        public DateTime SwipedAt { get; set; } = DateTime.UtcNow;
-        public bool IsMatch { get; set; } = false; // True if both liked each other
+        public int UserId { get; set; }
+        public int TargetUserId { get; set; }
+        public SwipeAction Action { get; set; }
+        public DateTime SwipedAt { get; set; }
+        public bool IsMatch { get; set; }
+        public DateTime? MatchedAt { get; set; }
 
         // Navigation properties
         public User? User { get; set; }
@@ -18,8 +19,9 @@ namespace AuthAPI.Models
 
     public enum SwipeAction
     {
-        Pass = 0,  // Swipe Left
-        Like = 1   // Swipe Right
+        Like,
+        Pass,
+        SuperLike
     }
 
     public class SwipeRequest
@@ -32,7 +34,7 @@ namespace AuthAPI.Models
     {
         public bool Success { get; set; }
         public string Message { get; set; } = string.Empty;
-        public bool IsMatch { get; set; } = false;
+        public bool IsMatch { get; set; }
         public UserDto? MatchedUser { get; set; }
     }
 }

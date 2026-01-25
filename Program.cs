@@ -1,7 +1,5 @@
-﻿// ===== Program.cs =====
-// Replace everything in Program.cs with this code
-
-using AuthAPI.Data;
+﻿using AuthAPI.Data;
+using AuthAPI.Hubs;
 using AuthAPI.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -13,14 +11,14 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ===== 1. ADD SERVICES TO CONTAINER =====
 
-// Add Controllers
 builder.Services.AddControllers();
 
-// Add Swagger for API documentation and testing
+// Add SignalR for real-time messaging
+builder.Services.AddSignalR();
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
-    // Configure Swagger to support JWT authentication
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -47,29 +45,30 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-// Add Database Context (using In-Memory database for demo)
+// Add Database Context
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseInMemoryDatabase("AuthDb"));
+    options.UseInMemoryDatabase("LinderDb"));
 
-// For Production, use SQL Server instead:
+// For Production SQL Server:
 // builder.Services.AddDbContext<AppDbContext>(options =>
 //     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Add CORS (Cross-Origin Resource Sharing) - allows frontend to call API
+// Add CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
     {
-        policy.AllowAnyOrigin()
+        policy.WithOrigins("http://localhost:3000", "http://localhost:5173") // React/Vue frontends
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowCredentials(); // Required for SignalR
     });
 });
 
 // ===== 2. CONFIGURE JWT AUTHENTICATION =====
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = jwtSettings["SecretKey"] ?? throw new Exception("JWT SecretKey not configured!");
+var secretKey = jwtSettings["SecretKey"] ?? "YourSuperSecretKeyMinimum32CharactersLong!123";
 
 builder.Services.AddAuthentication(options =>
 {
@@ -80,20 +79,41 @@ builder.Services.AddAuthentication(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
     {
-        ValidateIssuer = true, // Check who issued the token
-        ValidateAudience = true, // Check who can use the token
-        ValidateLifetime = true, // Check if token is expired
-        ValidateIssuerSigningKey = true, // Verify token signature
-        ValidIssuer = jwtSettings["Issuer"],
-        ValidAudience = jwtSettings["Audience"],
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = jwtSettings["Issuer"] ?? "LinderAPI",
+        ValidAudience = jwtSettings["Audience"] ?? "LinderUsers",
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey))
+    };
+
+    // SignalR JWT authentication
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/chathub"))
+            {
+                context.Token = accessToken;
+            }
+
+            return Task.CompletedTask;
+        }
     };
 });
 
-// ===== 3. REGISTER CUSTOM SERVICES =====0
+// ===== 3. REGISTER CUSTOM SERVICES =====
 
-// Register AuthService (Scoped = new instance per request)
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IPhotoService, PhotoService>();
+builder.Services.AddScoped<IProfileService, ProfileService>();
+builder.Services.AddScoped<IMatchingService, MatchingService>();
+builder.Services.AddScoped<IMessageService, MessageService>();
+builder.Services.AddScoped<IModerationService, ModerationService>();
 
 // ===== 4. BUILD THE APP =====
 
@@ -104,48 +124,21 @@ app.Urls.Add($"http://0.0.0.0:{port}");
 
 // ===== 5. CONFIGURE HTTP REQUEST PIPELINE =====
 
-// Enable Swagger in Development mode
+app.UseSwagger();
+app.UseSwaggerUI();
 
-    app.UseSwagger();
-    app.UseSwaggerUI();
-
-
-// Redirect HTTP to HTTPS
 app.UseHttpsRedirection();
 
-// Enable CORS
 app.UseCors("AllowAll");
 
-// Enable Authentication (must be before Authorization!)
 app.UseAuthentication();
-
-// Enable Authorization
 app.UseAuthorization();
 
-// Map Controllers to routes
 app.MapControllers();
+
+// Map SignalR Hub
+app.MapHub<ChatHub>("/chathub");
 
 // ===== 6. RUN THE APPLICATION =====
 
 app.Run();
-
-/*
-EXPLANATION OF THE PIPELINE:
-
-1. AddControllers() - Enables API controllers
-2. AddSwagger() - Adds API documentation UI
-3. AddDbContext() - Configures database
-4. AddCors() - Allows frontend to call API
-5. AddAuthentication() - Configures JWT authentication
-6. AddScoped<IAuthService>() - Registers our service
-
-MIDDLEWARE ORDER (VERY IMPORTANT!):
-1. UseSwagger() - Swagger UI
-2. UseHttpsRedirection() - Redirect to HTTPS
-3. UseCors() - Handle CORS
-4. UseAuthentication() - Verify JWT tokens
-5. UseAuthorization() - Check permissions
-6. MapControllers() - Route to controllers
-
-NEXT: How to run and test the API
-*/
