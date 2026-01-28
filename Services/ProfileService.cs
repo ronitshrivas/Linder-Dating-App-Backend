@@ -39,26 +39,38 @@ namespace AuthAPI.Services
             if (!string.IsNullOrWhiteSpace(request.FullName))
                 user.FullName = request.FullName;
 
-            //if (!string.IsNullOrWhiteSpace(request.PhoneNumber))
-            //    user.n = request.PhoneNumber;
-
             if (request.DateOfBirth.HasValue)
             {
                 user.DateOfBirth = request.DateOfBirth.Value;
-                user.Age = CalculateAge(request.DateOfBirth.Value);
+                user.Age = CalculateAge(request.DateOfBirth.Value); // ✅ Now assigns to int?
             }
 
             if (!string.IsNullOrWhiteSpace(request.Gender))
-                user.Gender = request.Gender;
+                user.Gender = request.Gender; // ✅ Now assigns to string?
 
             if (request.MaxDistance.HasValue)
-                user.MaxDistance = request.MaxDistance.Value;
+                user.MaxDistance = request.MaxDistance.Value; // ✅ Now assigns to int?
 
             if (!string.IsNullOrWhiteSpace(request.City))
                 user.City = request.City;
 
             if (!string.IsNullOrWhiteSpace(request.State))
                 user.State = request.State;
+
+            if (!string.IsNullOrWhiteSpace(request.Address))
+                user.Address = request.Address; // ✅ Added Address update
+
+            if (!string.IsNullOrWhiteSpace(request.Country))
+                user.Country = request.Country; // ✅ Added Country update
+
+            if (!string.IsNullOrWhiteSpace(request.InterestedIn))
+                user.InterestedIn = request.InterestedIn; // ✅ Added InterestedIn update
+
+            if (request.PreferredAgeMin.HasValue)
+                user.PreferredAgeMin = request.PreferredAgeMin.Value; // ✅ Added age preference
+
+            if (request.PreferredAgeMax.HasValue)
+                user.PreferredAgeMax = request.PreferredAgeMax.Value; // ✅ Added age preference
 
             if (request.Hobbies != null && request.Hobbies.Count > 0)
                 user.Hobbies = JsonSerializer.Serialize(request.Hobbies);
@@ -83,6 +95,7 @@ namespace AuthAPI.Services
 
             if (!string.IsNullOrWhiteSpace(request.ChineseZodiac))
                 user.ChineseZodiac = request.ChineseZodiac;
+
             if (request.Bio != null)
                 user.Bio = request.Bio;
 
@@ -145,22 +158,22 @@ namespace AuthAPI.Services
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
-               // PhoneNumber = user.PhoneNumber,
-                DateOfBirth = user.DateOfBirth,
-                Age = user.Age,
-                Gender = user.Gender,
-                MaxDistance = user.MaxDistance,
+                PhoneNumber = string.Empty, // Not used anymore
+                DateOfBirth = user.DateOfBirth ?? DateTime.MinValue, // ✅ Handle null
+                Age = user.Age ?? 0, // ✅ Handle null
+                Gender = user.Gender ?? string.Empty, // ✅ Handle null
+                MaxDistance = user.MaxDistance ?? 0, // ✅ Handle null
                 City = user.City,
                 State = user.State,
                 ProfilePhotos = JsonSerializer.Deserialize<List<string>>(user.ProfilePhotos) ?? new List<string>(),
                 Hobbies = JsonSerializer.Deserialize<List<string>>(user.Hobbies) ?? new List<string>(),
                 Interests = JsonSerializer.Deserialize<List<string>>(user.Interests) ?? new List<string>(),
-                ZodiacSign = user.ZodiacSign,
-                SunSign = user.SunSign,
-                MoonSign = user.MoonSign,
-                RashiSign = user.RashiSign,
-                Nakshatra = user.Nakshatra,
-                ChineseZodiac = user.ChineseZodiac,
+                ZodiacSign = user.ZodiacSign ?? string.Empty,
+                SunSign = user.SunSign ?? string.Empty,
+                MoonSign = user.MoonSign ?? string.Empty,
+                RashiSign = user.RashiSign ?? string.Empty,
+                Nakshatra = user.Nakshatra ?? string.Empty,
+                ChineseZodiac = user.ChineseZodiac ?? string.Empty,
                 Bio = user.Bio,
                 Occupation = user.Occupation,
                 Education = user.Education,
