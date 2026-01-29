@@ -9,13 +9,7 @@ using System.Text.Json;
 
 namespace AuthAPI.Services
 {
-    //public interface IAuthService
-    //{
-    //    Task<RegisterResponse> RegisterAsync(RegisterRequest request);
-    //    Task<CompleteProfileResponse> CompleteProfileAsync(int userId, CompleteProfileRequest request);
-    //    Task<ProfileStatusDto> GetProfileStatusAsync(int userId);
-    //    Task<AuthResponse> LoginAsync(LoginRequest request);
-    //}
+   
 
     public class AuthService : IAuthService
     {
@@ -59,28 +53,13 @@ namespace AuthAPI.Services
             // Hash password
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
-            // Create user with ONLY basic info (all Step 2 fields are NULL)
+            // Create user with ONLY basic info
             var user = new User
             {
                 FullName = request.FullName,
                 Email = request.Email,
                 PasswordHash = passwordHash,
-
-                // All Step 2 fields remain NULL
-                DateOfBirth = null,
-                Age = null,
-                Gender = null,
-                InterestedIn = null,
-                MaxDistance = null,
-                Address = null,
-                City = null,
-                State = null,
-                Country = null,
-                PreferredAgeMin = null,
-                PreferredAgeMax = null,
-                ProfilePhotos = "[]", // Empty array
-
-                IsProfileComplete = false, // Profile NOT complete yet
+                IsProfileComplete = false,
                 CreatedAt = DateTime.UtcNow,
                 LastActive = DateTime.UtcNow
             };
@@ -88,13 +67,12 @@ namespace AuthAPI.Services
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            // Generate JWT token
             var token = GenerateJwtToken(user);
 
             return new RegisterResponse
             {
                 Success = true,
-                Message = "Registration successful! Please complete your profile.",
+                Message = "Registration successful! You can complete your profile now or skip to browse.",
                 Token = token,
                 UserId = user.Id,
                 Email = user.Email,
@@ -102,7 +80,7 @@ namespace AuthAPI.Services
             };
         }
 
-        // ===== STEP 2: COMPLETE PROFILE =====
+        // ===== STEP 2: COMPLETE PROFILE (ALL OPTIONAL) =====
         public async Task<CompleteProfileResponse> CompleteProfileAsync(int userId, CompleteProfileRequest request)
         {
             var user = await _context.Users.FindAsync(userId);
@@ -116,112 +94,184 @@ namespace AuthAPI.Services
                 };
             }
 
-            if (user.IsProfileComplete)
+            // Validate photos IF provided
+            if (request.ProfilePhotos != null && request.ProfilePhotos.Count > 0)
             {
-                return new CompleteProfileResponse
-                {
-                    Success = false,
-                    Message = "Profile already completed"
-                };
-            }
-
-            // Validate minimum photos (2 required)
-            if (request.ProfilePhotos == null || request.ProfilePhotos.Count < 2)
-            {
-                return new CompleteProfileResponse
-                {
-                    Success = false,
-                    Message = "Please upload at least 2 photos (maximum 6)"
-                };
-            }
-
-            // Validate maximum photos (6 max)
-            if (request.ProfilePhotos.Count > 6)
-            {
-                return new CompleteProfileResponse
-                {
-                    Success = false,
-                    Message = "Maximum 6 photos allowed"
-                };
-            }
-
-            // Validate age (must be 18+)
-            var age = CalculateAge(request.DateOfBirth);
-            if (age < 18)
-            {
-                return new CompleteProfileResponse
-                {
-                    Success = false,
-                    Message = "You must be at least 18 years old"
-                };
-            }
-
-            // Validate preferred age range
-            if (request.PreferredAgeMin > request.PreferredAgeMax)
-            {
-                return new CompleteProfileResponse
-                {
-                    Success = false,
-                    Message = "Minimum age cannot be greater than maximum age"
-                };
-            }
-
-            // Handle "Prefer not to say" gender
-            if (request.Gender == "Prefer not to say")
-            {
-                if (string.IsNullOrWhiteSpace(request.InterestedIn))
+                if (request.ProfilePhotos.Count < 2)
                 {
                     return new CompleteProfileResponse
                     {
                         Success = false,
-                        Message = "Please select who you're interested in (Male, Female, or Both)"
+                        Message = "If uploading photos, please provide at least 2 (maximum 6)"
                     };
                 }
 
-                if (request.InterestedIn != "Male" &&
-                    request.InterestedIn != "Female" &&
-                    request.InterestedIn != "Both")
+                if (request.ProfilePhotos.Count > 6)
                 {
                     return new CompleteProfileResponse
                     {
                         Success = false,
-                        Message = "Interested in must be: Male, Female, or Both"
+                        Message = "Maximum 6 photos allowed"
                     };
+                }
+
+                user.ProfilePhotos = JsonSerializer.Serialize(request.ProfilePhotos);
+            }
+
+            // Update DateOfBirth and Age IF provided
+            if (request.DateOfBirth.HasValue)
+            {
+                var age = CalculateAge(request.DateOfBirth.Value);
+
+                if (age < 18)
+                {
+                    return new CompleteProfileResponse
+                    {
+                        Success = false,
+                        Message = "You must be at least 18 years old"
+                    };
+                }
+
+                user.DateOfBirth = request.DateOfBirth.Value;
+                user.Age = age;
+            }
+
+            // Update Gender IF provided
+            if (!string.IsNullOrWhiteSpace(request.Gender))
+            {
+                user.Gender = request.Gender;
+
+                // Handle "Prefer not to say" - validate InterestedIn IF Gender is provided
+                if (request.Gender == "Prefer not to say")
+                {
+                    if (string.IsNullOrWhiteSpace(request.InterestedIn))
+                    {
+                        return new CompleteProfileResponse
+                        {
+                            Success = false,
+                            Message = "Please select who you're interested in (Male, Female, or Both)"
+                        };
+                    }
+
+                    if (request.InterestedIn != "Male" &&
+                        request.InterestedIn != "Female" &&
+                        request.InterestedIn != "Both")
+                    {
+                        return new CompleteProfileResponse
+                        {
+                            Success = false,
+                            Message = "Interested in must be: Male, Female, or Both"
+                        };
+                    }
                 }
             }
 
-            // NOW set all the nullable fields from Step 2
-            user.DateOfBirth = request.DateOfBirth; // Now has value
-            user.Age = age; // Now has value
-            user.Gender = request.Gender; // Now has value
-            user.InterestedIn = request.InterestedIn;
-            user.MaxDistance = request.MaxDistance; // Now has value
-            user.Address = request.Address; // Now has value
-            user.City = request.City;
-            user.State = request.State;
-            user.Country = request.Country;
-            user.PreferredAgeMin = request.PreferredAgeMin; // Now has value
-            user.PreferredAgeMax = request.PreferredAgeMax; // Now has value
+            // Update InterestedIn IF provided
+            if (!string.IsNullOrWhiteSpace(request.InterestedIn))
+            {
+                user.InterestedIn = request.InterestedIn;
+            }
 
-            // Save photos
-            user.ProfilePhotos = JsonSerializer.Serialize(request.ProfilePhotos);
+            // Validate age range IF both provided
+            if (request.PreferredAgeMin.HasValue && request.PreferredAgeMax.HasValue)
+            {
+                if (request.PreferredAgeMin > request.PreferredAgeMax)
+                {
+                    return new CompleteProfileResponse
+                    {
+                        Success = false,
+                        Message = "Minimum age cannot be greater than maximum age"
+                    };
+                }
 
-            // Save optional fields
-            user.Hobbies = JsonSerializer.Serialize(request.Hobbies ?? new List<string>());
-            user.Interests = JsonSerializer.Serialize(request.Interests ?? new List<string>());
-            user.ZodiacSign = request.ZodiacSign ?? string.Empty;
-            user.SunSign = request.SunSign ?? string.Empty;
-            user.MoonSign = request.MoonSign ?? string.Empty;
-            user.RashiSign = request.RashiSign ?? string.Empty;
-            user.Nakshatra = request.Nakshatra ?? string.Empty;
-            user.ChineseZodiac = request.ChineseZodiac ?? string.Empty;
-            user.Bio = request.Bio;
-            user.Occupation = request.Occupation;
-            user.Education = request.Education;
-            user.Height = request.Height;
+                user.PreferredAgeMin = request.PreferredAgeMin;
+                user.PreferredAgeMax = request.PreferredAgeMax;
+            }
+            else if (request.PreferredAgeMin.HasValue)
+            {
+                user.PreferredAgeMin = request.PreferredAgeMin;
+            }
+            else if (request.PreferredAgeMax.HasValue)
+            {
+                user.PreferredAgeMax = request.PreferredAgeMax;
+            }
 
-            // Mark profile as complete
-            user.IsProfileComplete = true;
+            // Update MaxDistance IF provided
+            if (request.MaxDistance.HasValue)
+            {
+                user.MaxDistance = request.MaxDistance;
+            }
+
+            // Update Address fields IF provided
+            if (!string.IsNullOrWhiteSpace(request.Address))
+            {
+                user.Address = request.Address;
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.City))
+            {
+                user.City = request.City;
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.State))
+            {
+                user.State = request.State;
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Country))
+            {
+                user.Country = request.Country;
+            }
+
+            // Update Hobbies IF provided
+            if (request.Hobbies != null && request.Hobbies.Count > 0)
+            {
+                user.Hobbies = JsonSerializer.Serialize(request.Hobbies);
+            }
+
+            // Update Interests IF provided
+            if (request.Interests != null && request.Interests.Count > 0)
+            {
+                user.Interests = JsonSerializer.Serialize(request.Interests);
+            }
+
+            // Update Zodiac fields IF provided
+            if (!string.IsNullOrWhiteSpace(request.ZodiacSign))
+                user.ZodiacSign = request.ZodiacSign;
+
+            if (!string.IsNullOrWhiteSpace(request.SunSign))
+                user.SunSign = request.SunSign;
+
+            if (!string.IsNullOrWhiteSpace(request.MoonSign))
+                user.MoonSign = request.MoonSign;
+
+            if (!string.IsNullOrWhiteSpace(request.RashiSign))
+                user.RashiSign = request.RashiSign;
+
+            if (!string.IsNullOrWhiteSpace(request.Nakshatra))
+                user.Nakshatra = request.Nakshatra;
+
+            if (!string.IsNullOrWhiteSpace(request.ChineseZodiac))
+                user.ChineseZodiac = request.ChineseZodiac;
+
+            // Update additional info IF provided
+            if (!string.IsNullOrWhiteSpace(request.Bio))
+                user.Bio = request.Bio;
+
+            if (!string.IsNullOrWhiteSpace(request.Occupation))
+                user.Occupation = request.Occupation;
+
+            if (!string.IsNullOrWhiteSpace(request.Education))
+                user.Education = request.Education;
+
+            if (request.Height.HasValue)
+                user.Height = request.Height;
+
+            // Calculate profile completion percentage
+            var completionPercentage = CalculateProfileCompletion(user);
+
+            // Mark profile as complete if they filled enough fields (e.g., 50% or more)
+            user.IsProfileComplete = completionPercentage >= 50;
             user.LastActive = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -229,7 +279,9 @@ namespace AuthAPI.Services
             return new CompleteProfileResponse
             {
                 Success = true,
-                Message = "Profile completed successfully!",
+                Message = user.IsProfileComplete
+                    ? $"Profile updated successfully! ({completionPercentage}% complete)"
+                    : $"Profile updated! Fill more details to increase your match rate. ({completionPercentage}% complete)",
                 User = MapToUserDto(user)
             };
         }
@@ -245,42 +297,81 @@ namespace AuthAPI.Services
                 {
                     IsProfileComplete = false,
                     CurrentStep = "not_found",
-                    MissingFields = new List<string> { "User not found" }
+                    MissingFields = new List<string> { "User not found" },
+                    CompletionPercentage = 0
                 };
             }
 
-            var status = new ProfileStatusDto
+            var missingFields = new List<string>();
+            var completionPercentage = CalculateProfileCompletion(user);
+
+            // List optional but recommended fields that are missing
+            if (string.IsNullOrEmpty(user.ProfilePhotos) || user.ProfilePhotos == "[]")
+                missingFields.Add("Profile photos (recommended: 2-6)");
+
+            if (!user.DateOfBirth.HasValue)
+                missingFields.Add("Date of birth");
+
+            if (string.IsNullOrEmpty(user.Gender))
+                missingFields.Add("Gender");
+
+            if (string.IsNullOrEmpty(user.Address))
+                missingFields.Add("Address");
+
+            if (!user.PreferredAgeMin.HasValue || !user.PreferredAgeMax.HasValue)
+                missingFields.Add("Preferred age range");
+
+            if (!user.MaxDistance.HasValue)
+                missingFields.Add("Maximum distance");
+
+            if (string.IsNullOrEmpty(user.Bio))
+                missingFields.Add("Bio");
+
+            if (user.Hobbies == "[]" || string.IsNullOrEmpty(user.Hobbies))
+                missingFields.Add("Hobbies");
+
+            if (user.Interests == "[]" || string.IsNullOrEmpty(user.Interests))
+                missingFields.Add("Interests");
+
+            return new ProfileStatusDto
             {
                 IsProfileComplete = user.IsProfileComplete,
-                CurrentStep = user.IsProfileComplete ? "completed" : "registered"
+                CurrentStep = user.IsProfileComplete ? "completed" : "registered",
+                MissingFields = missingFields,
+                CompletionPercentage = completionPercentage
             };
+        }
 
-            if (!user.IsProfileComplete)
-            {
-                var missingFields = new List<string>();
+        // Calculate profile completion percentage
+        private int CalculateProfileCompletion(User user)
+        {
+            int totalFields = 15; // Total important fields
+            int filledFields = 0;
 
-                if (string.IsNullOrEmpty(user.ProfilePhotos) || user.ProfilePhotos == "[]")
-                    missingFields.Add("Profile photos (minimum 2)");
+            // Check each important field
+            if (!string.IsNullOrEmpty(user.ProfilePhotos) && user.ProfilePhotos != "[]")
+                filledFields += 2; // Photos are worth 2 points
 
-                if (!user.DateOfBirth.HasValue)
-                    missingFields.Add("Date of birth");
+            if (user.DateOfBirth.HasValue) filledFields++;
+            if (!string.IsNullOrEmpty(user.Gender)) filledFields++;
+            if (!string.IsNullOrEmpty(user.Address)) filledFields++;
+            if (user.PreferredAgeMin.HasValue) filledFields++;
+            if (user.PreferredAgeMax.HasValue) filledFields++;
+            if (user.MaxDistance.HasValue) filledFields++;
+            if (!string.IsNullOrEmpty(user.Bio)) filledFields++;
 
-                if (string.IsNullOrEmpty(user.Gender))
-                    missingFields.Add("Gender");
+            if (user.Hobbies != "[]" && !string.IsNullOrEmpty(user.Hobbies))
+                filledFields++;
 
-                if (string.IsNullOrEmpty(user.Address))
-                    missingFields.Add("Address");
+            if (user.Interests != "[]" && !string.IsNullOrEmpty(user.Interests))
+                filledFields++;
 
-                if (!user.PreferredAgeMin.HasValue || !user.PreferredAgeMax.HasValue)
-                    missingFields.Add("Preferred age range");
+            if (!string.IsNullOrEmpty(user.Occupation)) filledFields++;
+            if (!string.IsNullOrEmpty(user.Education)) filledFields++;
+            if (user.Height.HasValue) filledFields++;
+            if (!string.IsNullOrEmpty(user.ZodiacSign)) filledFields++;
 
-                if (!user.MaxDistance.HasValue)
-                    missingFields.Add("Maximum distance");
-
-                status.MissingFields = missingFields;
-            }
-
-            return status;
+            return (int)((double)filledFields / totalFields * 100);
         }
 
         // ===== LOGIN =====
@@ -309,16 +400,15 @@ namespace AuthAPI.Services
                 };
             }
 
-            // Update last active
             user.LastActive = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
             var token = GenerateJwtToken(user);
+            var completionPercentage = CalculateProfileCompletion(user);
 
-            // Check if profile is complete
             var message = user.IsProfileComplete
                 ? "Login successful"
-                : "Login successful! Please complete your profile.";
+                : $"Login successful! Complete your profile to get better matches. ({completionPercentage}% complete)";
 
             return new AuthResponse
             {
@@ -346,11 +436,11 @@ namespace AuthAPI.Services
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
-                PhoneNumber = string.Empty, // Not used in new flow
-                DateOfBirth = user.DateOfBirth ?? DateTime.MinValue, // Default if null
-                Age = user.Age ?? 0, // Default if null
-                Gender = user.Gender ?? string.Empty, // Default if null
-                MaxDistance = user.MaxDistance ?? 0, // Default if null
+                PhoneNumber = string.Empty,
+                DateOfBirth = user.DateOfBirth ?? DateTime.MinValue,
+                Age = user.Age ?? 0,
+                Gender = user.Gender ?? string.Empty,
+                MaxDistance = user.MaxDistance ?? 0,
                 City = user.City,
                 State = user.State,
                 ProfilePhotos = JsonSerializer.Deserialize<List<string>>(user.ProfilePhotos) ?? new List<string>(),
@@ -385,7 +475,6 @@ namespace AuthAPI.Services
                 new Claim("ProfileComplete", user.IsProfileComplete.ToString())
             };
 
-            // Add gender and age ONLY if profile is complete (and they have values)
             if (user.IsProfileComplete && !string.IsNullOrEmpty(user.Gender))
             {
                 claims.Add(new Claim("Gender", user.Gender));

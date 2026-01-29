@@ -4,54 +4,51 @@ using System.ComponentModel.DataAnnotations;
 
 namespace AuthAPI.Models
 {
-    // STEP 2: Complete Profile Request
+    // STEP 2: Complete Profile Request - ALL FIELDS OPTIONAL
     public class CompleteProfileRequest
     {
-        // ===== REQUIRED FIELDS =====
+        // ===== ALL FIELDS ARE OPTIONAL =====
 
-        [Required(ErrorMessage = "At least 2 photos are required")]
-        [MinLength(2, ErrorMessage = "Please upload at least 2 photos (maximum 6)")]
+        // Profile Photos (optional, but if provided, must be 2-6)
+        [MinLength(2, ErrorMessage = "If uploading photos, please upload at least 2 (maximum 6)")]
         [MaxLength(6, ErrorMessage = "Maximum 6 photos allowed")]
-        public List<string> ProfilePhotos { get; set; } = new List<string>();
+        public List<string>? ProfilePhotos { get; set; }
 
-        [Required(ErrorMessage = "Date of birth is required")]
-        public DateTime DateOfBirth { get; set; }
+        // Personal Details (all optional)
+        public DateTime? DateOfBirth { get; set; }
 
-        [Required(ErrorMessage = "Gender is required")]
         [RegularExpression("^(Male|Female|Other|Prefer not to say)$",
             ErrorMessage = "Gender must be: Male, Female, Other, or Prefer not to say")]
-        public string Gender { get; set; } = string.Empty;
+        public string? Gender { get; set; }
 
-        // Required only if Gender = "Prefer not to say"
+        // Only needed if Gender = "Prefer not to say"
         public string? InterestedIn { get; set; } // "Male", "Female", "Both"
 
-        [Required(ErrorMessage = "Maximum distance is required")]
+        // Location & Preferences (all optional)
         [Range(1, 500, ErrorMessage = "Distance must be between 1 and 500 km")]
-        public int MaxDistance { get; set; } = 50;
+        public int? MaxDistance { get; set; }
 
-        [Required(ErrorMessage = "Address is required")]
-        public string Address { get; set; } = string.Empty;
-
+        public string? Address { get; set; }
         public string? City { get; set; }
         public string? State { get; set; }
         public string? Country { get; set; }
 
-        [Required(ErrorMessage = "Preferred minimum age is required")]
+        // Age Preferences (all optional)
         [Range(18, 100, ErrorMessage = "Age must be between 18 and 100")]
-        public int PreferredAgeMin { get; set; } = 18;
+        public int? PreferredAgeMin { get; set; }
 
-        [Required(ErrorMessage = "Preferred maximum age is required")]
         [Range(18, 100, ErrorMessage = "Age must be between 18 and 100")]
-        public int PreferredAgeMax { get; set; } = 80;
+        public int? PreferredAgeMax { get; set; }
 
-        // ===== OPTIONAL FIELDS =====
-
+        // Horoscope Details (all optional)
         public string? ZodiacSign { get; set; }
         public string? SunSign { get; set; }
         public string? MoonSign { get; set; }
         public string? RashiSign { get; set; }
         public string? Nakshatra { get; set; }
         public string? ChineseZodiac { get; set; }
+
+        // Additional Info (all optional)
         public string? Bio { get; set; }
         public string? Occupation { get; set; }
         public string? Education { get; set; }
@@ -59,6 +56,7 @@ namespace AuthAPI.Models
         [Range(100, 250, ErrorMessage = "Height must be between 100 and 250 cm")]
         public int? Height { get; set; }
 
+        // Interests & Hobbies (all optional)
         public List<string>? Hobbies { get; set; }
         public List<string>? Interests { get; set; }
     }
@@ -77,5 +75,6 @@ namespace AuthAPI.Models
         public bool IsProfileComplete { get; set; }
         public string CurrentStep { get; set; } = string.Empty; // "registered" or "completed"
         public List<string> MissingFields { get; set; } = new List<string>();
+        public int CompletionPercentage { get; set; } // 0-100%
     }
 }
