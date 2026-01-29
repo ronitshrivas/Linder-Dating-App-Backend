@@ -9,8 +9,6 @@ using System.Text.Json;
 
 namespace AuthAPI.Services
 {
-   
-
     public class AuthService : IAuthService
     {
         private readonly AppDbContext _context;
@@ -80,7 +78,7 @@ namespace AuthAPI.Services
             };
         }
 
-        // ===== STEP 2: COMPLETE PROFILE (ALL OPTIONAL) =====
+        // ===== STEP 2: COMPLETE PROFILE (ALL OPTIONAL - NO VALIDATION) =====
         public async Task<CompleteProfileResponse> CompleteProfileAsync(int userId, CompleteProfileRequest request)
         {
             var user = await _context.Users.FindAsync(userId);
@@ -94,18 +92,10 @@ namespace AuthAPI.Services
                 };
             }
 
-            // Validate photos IF provided
+            // ===== PHOTOS - OPTIONAL, NO MINIMUM REQUIRED =====
             if (request.ProfilePhotos != null && request.ProfilePhotos.Count > 0)
             {
-                if (request.ProfilePhotos.Count < 2)
-                {
-                    return new CompleteProfileResponse
-                    {
-                        Success = false,
-                        Message = "If uploading photos, please provide at least 2 (maximum 6)"
-                    };
-                }
-
+                // Only validate max if photos are provided
                 if (request.ProfilePhotos.Count > 6)
                 {
                     return new CompleteProfileResponse
@@ -118,7 +108,7 @@ namespace AuthAPI.Services
                 user.ProfilePhotos = JsonSerializer.Serialize(request.ProfilePhotos);
             }
 
-            // Update DateOfBirth and Age IF provided
+            // ===== DATE OF BIRTH - OPTIONAL, ONLY VALIDATE IF PROVIDED =====
             if (request.DateOfBirth.HasValue)
             {
                 var age = CalculateAge(request.DateOfBirth.Value);
@@ -136,45 +126,30 @@ namespace AuthAPI.Services
                 user.Age = age;
             }
 
-            // Update Gender IF provided
+            // ===== GENDER - OPTIONAL =====
             if (!string.IsNullOrWhiteSpace(request.Gender))
             {
                 user.Gender = request.Gender;
-
-                // Handle "Prefer not to say" - validate InterestedIn IF Gender is provided
-                if (request.Gender == "Prefer not to say")
-                {
-                    if (string.IsNullOrWhiteSpace(request.InterestedIn))
-                    {
-                        return new CompleteProfileResponse
-                        {
-                            Success = false,
-                            Message = "Please select who you're interested in (Male, Female, or Both)"
-                        };
-                    }
-
-                    if (request.InterestedIn != "Male" &&
-                        request.InterestedIn != "Female" &&
-                        request.InterestedIn != "Both")
-                    {
-                        return new CompleteProfileResponse
-                        {
-                            Success = false,
-                            Message = "Interested in must be: Male, Female, or Both"
-                        };
-                    }
-                }
             }
 
-            // Update InterestedIn IF provided
+            // ===== INTERESTED IN - OPTIONAL =====
             if (!string.IsNullOrWhiteSpace(request.InterestedIn))
             {
                 user.InterestedIn = request.InterestedIn;
             }
 
-            // Validate age range IF both provided
+            // ===== AGE PREFERENCES - OPTIONAL, ONLY VALIDATE IF BOTH PROVIDED =====
             if (request.PreferredAgeMin.HasValue && request.PreferredAgeMax.HasValue)
             {
+                if (request.PreferredAgeMin < 18 || request.PreferredAgeMax > 100)
+                {
+                    return new CompleteProfileResponse
+                    {
+                        Success = false,
+                        Message = "Age preferences must be between 18 and 100"
+                    };
+                }
+
                 if (request.PreferredAgeMin > request.PreferredAgeMax)
                 {
                     return new CompleteProfileResponse
@@ -189,53 +164,69 @@ namespace AuthAPI.Services
             }
             else if (request.PreferredAgeMin.HasValue)
             {
+                if (request.PreferredAgeMin < 18)
+                {
+                    return new CompleteProfileResponse
+                    {
+                        Success = false,
+                        Message = "Minimum age must be at least 18"
+                    };
+                }
                 user.PreferredAgeMin = request.PreferredAgeMin;
             }
             else if (request.PreferredAgeMax.HasValue)
             {
+                if (request.PreferredAgeMax > 100)
+                {
+                    return new CompleteProfileResponse
+                    {
+                        Success = false,
+                        Message = "Maximum age cannot exceed 100"
+                    };
+                }
                 user.PreferredAgeMax = request.PreferredAgeMax;
             }
 
-            // Update MaxDistance IF provided
+            // ===== MAX DISTANCE - OPTIONAL, ONLY VALIDATE IF PROVIDED =====
             if (request.MaxDistance.HasValue)
             {
+                if (request.MaxDistance < 1 || request.MaxDistance > 500)
+                {
+                    return new CompleteProfileResponse
+                    {
+                        Success = false,
+                        Message = "Distance must be between 1 and 500 km"
+                    };
+                }
                 user.MaxDistance = request.MaxDistance;
             }
 
-            // Update Address fields IF provided
+            // ===== ADDRESS FIELDS - ALL OPTIONAL =====
             if (!string.IsNullOrWhiteSpace(request.Address))
-            {
                 user.Address = request.Address;
-            }
 
             if (!string.IsNullOrWhiteSpace(request.City))
-            {
                 user.City = request.City;
-            }
 
             if (!string.IsNullOrWhiteSpace(request.State))
-            {
                 user.State = request.State;
-            }
 
             if (!string.IsNullOrWhiteSpace(request.Country))
-            {
                 user.Country = request.Country;
-            }
 
-            // Update Hobbies IF provided
+            // ===== HOBBIES - OPTIONAL =====
             if (request.Hobbies != null && request.Hobbies.Count > 0)
             {
                 user.Hobbies = JsonSerializer.Serialize(request.Hobbies);
             }
 
-            // Update Interests IF provided
+            // ===== INTERESTS - OPTIONAL =====
             if (request.Interests != null && request.Interests.Count > 0)
             {
                 user.Interests = JsonSerializer.Serialize(request.Interests);
             }
 
-            // Update Zodiac fields IF provided
+            // ===== ZODIAC/HOROSCOPE FIELDS - ALL OPTIONAL =====
             if (!string.IsNullOrWhiteSpace(request.ZodiacSign))
                 user.ZodiacSign = request.ZodiacSign;
 
@@ -254,7 +245,7 @@ namespace AuthAPI.Services
             if (!string.IsNullOrWhiteSpace(request.ChineseZodiac))
                 user.ChineseZodiac = request.ChineseZodiac;
 
-            // Update additional info IF provided
+            // ===== ADDITIONAL INFO - ALL OPTIONAL =====
             if (!string.IsNullOrWhiteSpace(request.Bio))
                 user.Bio = request.Bio;
 
@@ -264,24 +255,43 @@ namespace AuthAPI.Services
             if (!string.IsNullOrWhiteSpace(request.Education))
                 user.Education = request.Education;
 
+            // ===== HEIGHT - OPTIONAL, ONLY VALIDATE IF PROVIDED =====
             if (request.Height.HasValue)
+            {
+                if (request.Height < 100 || request.Height > 250)
+                {
+                    return new CompleteProfileResponse
+                    {
+                        Success = false,
+                        Message = "Height must be between 100 and 250 cm"
+                    };
+                }
                 user.Height = request.Height;
+            }
 
             // Calculate profile completion percentage
             var completionPercentage = CalculateProfileCompletion(user);
 
-            // Mark profile as complete if they filled enough fields (e.g., 50% or more)
-            user.IsProfileComplete = completionPercentage >= 50;
+            // ===== LENIENT PROFILE COMPLETION =====
+            // User can skip everything, but we encourage them to fill more
+            // Profile is considered "complete" if they have at least 20% filled
+            user.IsProfileComplete = completionPercentage >= 20;
             user.LastActive = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
 
+            var message = completionPercentage == 0
+                ? "Profile saved! You can start browsing, but adding more details will improve your matches."
+                : completionPercentage < 50
+                    ? $"Profile updated! Add more details to get better matches. ({completionPercentage}% complete)"
+                    : completionPercentage < 100
+                        ? $"Great profile! Keep going to maximize your match potential. ({completionPercentage}% complete)"
+                        : "Profile completed! You're all set to find amazing matches! 🎉";
+
             return new CompleteProfileResponse
             {
                 Success = true,
-                Message = user.IsProfileComplete
-                    ? $"Profile updated successfully! ({completionPercentage}% complete)"
-                    : $"Profile updated! Fill more details to increase your match rate. ({completionPercentage}% complete)",
+                Message = message,
                 User = MapToUserDto(user)
             };
         }
@@ -305,30 +315,30 @@ namespace AuthAPI.Services
             var missingFields = new List<string>();
             var completionPercentage = CalculateProfileCompletion(user);
 
-            // List optional but recommended fields that are missing
+            // List RECOMMENDED (not required) fields that are missing
             if (string.IsNullOrEmpty(user.ProfilePhotos) || user.ProfilePhotos == "[]")
-                missingFields.Add("Profile photos (recommended: 2-6)");
+                missingFields.Add("Profile photos (recommended for better matches)");
 
             if (!user.DateOfBirth.HasValue)
-                missingFields.Add("Date of birth");
+                missingFields.Add("Date of birth (helps with age-appropriate matches)");
 
             if (string.IsNullOrEmpty(user.Gender))
-                missingFields.Add("Gender");
+                missingFields.Add("Gender (helps us show you relevant matches)");
 
             if (string.IsNullOrEmpty(user.Address))
-                missingFields.Add("Address");
+                missingFields.Add("Location (find matches near you)");
 
             if (!user.PreferredAgeMin.HasValue || !user.PreferredAgeMax.HasValue)
                 missingFields.Add("Preferred age range");
 
             if (!user.MaxDistance.HasValue)
-                missingFields.Add("Maximum distance");
+                missingFields.Add("Maximum distance preference");
 
             if (string.IsNullOrEmpty(user.Bio))
-                missingFields.Add("Bio");
+                missingFields.Add("Bio (tell others about yourself)");
 
             if (user.Hobbies == "[]" || string.IsNullOrEmpty(user.Hobbies))
-                missingFields.Add("Hobbies");
+                missingFields.Add("Hobbies (find people with similar interests)");
 
             if (user.Interests == "[]" || string.IsNullOrEmpty(user.Interests))
                 missingFields.Add("Interests");
@@ -406,9 +416,11 @@ namespace AuthAPI.Services
             var token = GenerateJwtToken(user);
             var completionPercentage = CalculateProfileCompletion(user);
 
-            var message = user.IsProfileComplete
-                ? "Login successful"
-                : $"Login successful! Complete your profile to get better matches. ({completionPercentage}% complete)";
+            var message = completionPercentage == 0
+                ? "Login successful! Complete your profile to get better matches."
+                : completionPercentage < 50
+                    ? $"Login successful! Add more profile details for better matches. ({completionPercentage}% complete)"
+                    : "Login successful! Welcome back!";
 
             return new AuthResponse
             {
