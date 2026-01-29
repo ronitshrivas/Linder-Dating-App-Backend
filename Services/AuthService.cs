@@ -78,7 +78,7 @@ namespace AuthAPI.Services
                 Country = null,
                 PreferredAgeMin = null,
                 PreferredAgeMax = null,
-                ProfilePhotos = new List<IFormFile>(), // Empty array
+                ProfilePhotos = "[]", // Empty array
 
                 IsProfileComplete = false, // Profile NOT complete yet
                 CreatedAt = DateTime.UtcNow,
