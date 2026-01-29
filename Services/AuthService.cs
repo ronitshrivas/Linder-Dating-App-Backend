@@ -59,27 +59,12 @@ namespace AuthAPI.Services
             // Hash password
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
-            // Create user with ONLY basic info (all Step 2 fields are NULL)
+            // Create user with basic info only
             var user = new User
             {
                 FullName = request.FullName,
                 Email = request.Email,
                 PasswordHash = passwordHash,
-
-                // All Step 2 fields remain NULL
-                DateOfBirth = null,
-                Age = null,
-                Gender = null,
-                InterestedIn = null,
-                MaxDistance = null,
-                Address = null,
-                City = null,
-                State = null,
-                Country = null,
-                PreferredAgeMin = null,
-                PreferredAgeMax = null,
-                ProfilePhotos = "[]", // Empty array
-
                 IsProfileComplete = false, // Profile NOT complete yet
                 CreatedAt = DateTime.UtcNow,
                 LastActive = DateTime.UtcNow
@@ -190,18 +175,18 @@ namespace AuthAPI.Services
                 }
             }
 
-            // NOW set all the nullable fields from Step 2
-            user.DateOfBirth = request.DateOfBirth; // Now has value
-            user.Age = age; // Now has value
-            user.Gender = request.Gender; // Now has value
+            // Update user with profile details
+            user.DateOfBirth = request.DateOfBirth;
+            user.Age = age;
+            user.Gender = request.Gender;
             user.InterestedIn = request.InterestedIn;
-            user.MaxDistance = request.MaxDistance; // Now has value
-            user.Address = request.Address; // Now has value
+            user.MaxDistance = request.MaxDistance;
+            user.Address = request.Address;
             user.City = request.City;
             user.State = request.State;
             user.Country = request.Country;
-            user.PreferredAgeMin = request.PreferredAgeMin; // Now has value
-            user.PreferredAgeMax = request.PreferredAgeMax; // Now has value
+            user.PreferredAgeMin = request.PreferredAgeMin;
+            user.PreferredAgeMax = request.PreferredAgeMax;
 
             // Save photos
             user.ProfilePhotos = JsonSerializer.Serialize(request.ProfilePhotos);
@@ -257,27 +242,15 @@ namespace AuthAPI.Services
 
             if (!user.IsProfileComplete)
             {
-                var missingFields = new List<string>();
-
-                if (string.IsNullOrEmpty(user.ProfilePhotos) || user.ProfilePhotos == "[]")
-                    missingFields.Add("Profile photos (minimum 2)");
-
-                if (!user.DateOfBirth.HasValue)
-                    missingFields.Add("Date of birth");
-
-                if (string.IsNullOrEmpty(user.Gender))
-                    missingFields.Add("Gender");
-
-                if (string.IsNullOrEmpty(user.Address))
-                    missingFields.Add("Address");
-
-                if (!user.PreferredAgeMin.HasValue || !user.PreferredAgeMax.HasValue)
-                    missingFields.Add("Preferred age range");
-
-                if (!user.MaxDistance.HasValue)
-                    missingFields.Add("Maximum distance");
-
-                status.MissingFields = missingFields;
+                status.MissingFields = new List<string>
+                {
+                    "Profile photos (minimum 2)",
+                    "Date of birth",
+                    "Gender",
+                    "Address",
+                    "Preferred age range",
+                    "Maximum distance"
+                };
             }
 
             return status;
@@ -347,21 +320,21 @@ namespace AuthAPI.Services
                 FullName = user.FullName,
                 Email = user.Email,
                 PhoneNumber = string.Empty, // Not used in new flow
-                DateOfBirth = user.DateOfBirth ?? DateTime.MinValue, // Default if null
-                Age = user.Age ?? 0, // Default if null
-                Gender = user.Gender ?? string.Empty, // Default if null
-                MaxDistance = user.MaxDistance ?? 0, // Default if null
+                DateOfBirth = user.DateOfBirth,
+                Age = user.Age,
+                Gender = user.Gender,
+                MaxDistance = user.MaxDistance,
                 City = user.City,
                 State = user.State,
                 ProfilePhotos = JsonSerializer.Deserialize<List<string>>(user.ProfilePhotos) ?? new List<string>(),
                 Hobbies = JsonSerializer.Deserialize<List<string>>(user.Hobbies) ?? new List<string>(),
                 Interests = JsonSerializer.Deserialize<List<string>>(user.Interests) ?? new List<string>(),
-                ZodiacSign = user.ZodiacSign ?? string.Empty,
-                SunSign = user.SunSign ?? string.Empty,
-                MoonSign = user.MoonSign ?? string.Empty,
-                RashiSign = user.RashiSign ?? string.Empty,
-                Nakshatra = user.Nakshatra ?? string.Empty,
-                ChineseZodiac = user.ChineseZodiac ?? string.Empty,
+                ZodiacSign = user.ZodiacSign,
+                SunSign = user.SunSign,
+                MoonSign = user.MoonSign,
+                RashiSign = user.RashiSign,
+                Nakshatra = user.Nakshatra,
+                ChineseZodiac = user.ChineseZodiac,
                 Bio = user.Bio,
                 Occupation = user.Occupation,
                 Education = user.Education,
@@ -385,15 +358,11 @@ namespace AuthAPI.Services
                 new Claim("ProfileComplete", user.IsProfileComplete.ToString())
             };
 
-            // Add gender and age ONLY if profile is complete (and they have values)
-            if (user.IsProfileComplete && !string.IsNullOrEmpty(user.Gender))
+            // Add gender and age only if profile is complete
+            if (user.IsProfileComplete)
             {
                 claims.Add(new Claim("Gender", user.Gender));
-            }
-
-            if (user.IsProfileComplete && user.Age.HasValue)
-            {
-                claims.Add(new Claim("Age", user.Age.Value.ToString()));
+                claims.Add(new Claim("Age", user.Age.ToString()));
             }
 
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

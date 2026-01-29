@@ -238,7 +238,7 @@ namespace AuthAPI.Services
             breakdown.HoroscopeScore = CalculateHoroscopeCompatibility(currentUser, targetUser);
 
             // 4. Age Compatibility (15%)
-            var ageDiff = Math.Abs((decimal)(currentUser.Age - targetUser.Age));
+            var ageDiff = Math.Abs(currentUser.Age - targetUser.Age);
             breakdown.AgeCompatibility = ageDiff <= 5 ? 15 :
                                          ageDiff <= 10 ? 10 :
                                          ageDiff <= 15 ? 5 : 0;
@@ -346,21 +346,21 @@ namespace AuthAPI.Services
                 FullName = user.FullName,
                 Email = user.Email,
                // PhoneNumber = user.PhoneNumber,
-                DateOfBirth = user.DateOfBirth ?? DateTime.MinValue,
-                Age = user.Age ?? 0,
-                Gender = user.Gender ?? string.Empty,
-                MaxDistance = user.MaxDistance ?? 0,
+                DateOfBirth = user.DateOfBirth,
+                Age = user.Age,
+                Gender = user.Gender,
+                MaxDistance = user.MaxDistance,
                 City = user.City,
                 State = user.State,
                 ProfilePhotos = JsonSerializer.Deserialize<List<string>>(user.ProfilePhotos) ?? new List<string>(),
                 Hobbies = JsonSerializer.Deserialize<List<string>>(user.Hobbies) ?? new List<string>(),
                 Interests = JsonSerializer.Deserialize<List<string>>(user.Interests) ?? new List<string>(),
-                ZodiacSign = user.ZodiacSign ?? string.Empty,
-                SunSign = user.SunSign ?? string.Empty,
-                MoonSign = user.MoonSign ?? string.Empty,
-                RashiSign = user.RashiSign ?? string.Empty,
-                Nakshatra = user.Nakshatra ?? string.Empty,
-                ChineseZodiac = user.ChineseZodiac ?? string.Empty,
+                ZodiacSign = user.ZodiacSign,
+                SunSign = user.SunSign,
+                MoonSign = user.MoonSign,
+                RashiSign = user.RashiSign,
+                Nakshatra = user.Nakshatra,
+                ChineseZodiac = user.ChineseZodiac,
                 Bio = user.Bio,
                 Occupation = user.Occupation,
                 Education = user.Education,
