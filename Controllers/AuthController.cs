@@ -41,6 +41,7 @@ namespace AuthAPI.Controllers
         // POST: api/auth/complete-profile
         [Authorize] // Requires JWT token from Step 1
         [HttpPost("complete-profile")]
+        [Consumes("multipart/form-data")]
         public async Task<IActionResult> CompleteProfile([FromBody] CompleteProfileRequest request)
         {
             if (!ModelState.IsValid)

@@ -46,7 +46,7 @@ namespace AuthAPI.Models
         // ===== PROFILE PHOTOS (OPTIONAL until Step 2) =====
 
         // Empty array by default, filled in Step 2
-        public string ProfilePhotos { get; set; } = "[]"; // JSON array
+        public string ProfilePhotos { get; set; } = "[]"; 
 
         // ===== OPTIONAL FIELDS (Can remain empty even after Step 2) =====
 
