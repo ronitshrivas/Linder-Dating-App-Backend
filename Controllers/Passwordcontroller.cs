@@ -37,29 +37,55 @@ namespace AuthAPI.Controllers
             return BadRequest(result);
         }
 
-        // ===== RESET PASSWORD - USE RESET CODE =====
-        // POST: api/password/reset-password
-        [HttpPost("reset-password")]
-        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+        // ===== RESEND OTP CODE =====
+        // POST: api/password/resend-code
+        [HttpPost("resend-code")]
+        public async Task<IActionResult> ResendCode([FromBody] ForgotPasswordRequest request)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            var result = await _passwordService.ResetPasswordAsync(request);
+            // Reuse the same forgot password logic to generate and send new code
+            var result = await _passwordService.ForgotPasswordAsync(request);
 
             if (result.Success)
             {
-                return Ok(result);
+                return Ok(new
+                {
+                    success = true,
+                    message = "A new reset code has been sent to your email. (Valid for 15 minutes)",
+                    resetToken = result.ResetToken // Will be null in production
+                });
             }
 
             return BadRequest(result);
         }
 
-        // ===== VALIDATE RESET CODE (OPTIONAL) =====
+        // ===== RESET PASSWORD - USE RESET CODE =====
+        // POST: api/password/reset-password
+        //[HttpPost("reset-password")]
+        //public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+        //{
+        //    if (!ModelState.IsValid)
+        //    {
+        //        return BadRequest(ModelState);
+        //    }
+
+        //    var result = await _passwordService.ResetPasswordAsync(request);
+
+        //    if (result.Success)
+        //    {
+        //        return Ok(result);
+        //    }
+
+        //    return BadRequest(result);
+        //}
+
+        
         // POST: api/password/validate-reset-code
-        [HttpPost("validate-reset-code")]
+        [HttpPost("validate-resent-code")]
         public async Task<IActionResult> ValidateResetCode([FromBody] ValidateResetCodeRequest request)
         {
             var isValid = await _passwordService.ValidateResetCodeAsync(request.Email, request.ResetCode);
