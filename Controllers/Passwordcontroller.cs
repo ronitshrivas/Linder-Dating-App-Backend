@@ -2,6 +2,7 @@
 using AuthAPI.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
 namespace AuthAPI.Controllers
@@ -63,39 +64,32 @@ namespace AuthAPI.Controllers
             return BadRequest(result);
         }
 
-        // ===== RESET PASSWORD - USE RESET CODE =====
-        // POST: api/password/reset-password
-        //[HttpPost("reset-password")]
-        //public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
-        //{
-        //    if (!ModelState.IsValid)
-        //    {
-        //        return BadRequest(ModelState);
-        //    }
-
-        //    var result = await _passwordService.ResetPasswordAsync(request);
-
-        //    if (result.Success)
-        //    {
-        //        return Ok(result);
-        //    }
-
-        //    return BadRequest(result);
-        //}
-
-        
+        // ===== VALIDATE RESET CODE + RESET PASSWORD (COMBINED) =====
         // POST: api/password/validate-reset-code
         [HttpPost("validate-resent-code")]
-        public async Task<IActionResult> ValidateResetCode([FromBody] ValidateResetCodeRequest request)
+        public async Task<IActionResult> ValidateResetCode([FromBody] ValidateAndResetRequest request)
         {
-            var isValid = await _passwordService.ValidateResetCodeAsync(request.Email, request.ResetCode);
-
-            if (isValid)
+            if (!ModelState.IsValid)
             {
-                return Ok(new { valid = true, message = "Reset code is valid" });
+                return BadRequest(ModelState);
             }
 
-            return BadRequest(new { valid = false, message = "Invalid or expired reset code" });
+            // Convert to ResetPasswordRequest for the service
+            var resetRequest = new ResetPasswordRequest
+            {
+                Email = request.Email,
+                ResetCode = request.ResetCode,
+                NewPassword = request.NewPassword
+            };
+
+            var result = await _passwordService.ResetPasswordAsync(resetRequest);
+
+            if (result.Success)
+            {
+                return Ok(result);
+            }
+
+            return BadRequest(result);
         }
 
         // ===== CHANGE PASSWORD (LOGGED-IN USERS) =====
@@ -121,10 +115,18 @@ namespace AuthAPI.Controllers
         }
     }
 
-    // Request model for validating reset code
-    public class ValidateResetCodeRequest
+    // Request model for validate-reset-code endpoint
+    public class ValidateAndResetRequest
     {
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email format")]
         public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Reset code is required")]
         public string ResetCode { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "New password is required")]
+        [MinLength(6, ErrorMessage = "Password must be at least 6 characters")]
+        public string NewPassword { get; set; } = string.Empty;
     }
 }
