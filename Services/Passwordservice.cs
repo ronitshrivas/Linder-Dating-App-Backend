@@ -10,10 +10,14 @@ namespace AuthAPI.Services
     public class PasswordService : IPasswordService
     {
         private readonly AppDbContext _context;
+        private readonly IEmailService _emailService;
+        private readonly IConfiguration _configuration;
 
-        public PasswordService(AppDbContext context)
+        public PasswordService(AppDbContext context, IEmailService emailService, IConfiguration configuration)
         {
             _context = context;
+            _emailService = emailService;
+            _configuration = configuration;
         }
 
         // ===== FORGOT PASSWORD - GENERATE RESET CODE =====
@@ -59,16 +63,31 @@ namespace AuthAPI.Services
             _context.PasswordResets.Add(passwordReset);
             await _context.SaveChangesAsync();
 
-            // TODO: In production, send email with reset code
-            // await _emailService.SendPasswordResetEmailAsync(user.Email, resetCode);
+            // ===== SEND EMAIL WITH RESET CODE =====
+            var emailSent = await _emailService.SendPasswordResetEmailAsync(user.Email, resetCode);
 
-            // For development/testing, return the code in response
-            return new ForgotPasswordResponse
+            // Check if we're in development mode
+            var isDevelopment = _configuration.GetValue<bool>("EmailSettings:IsDevelopment", true);
+
+            if (emailSent)
             {
-                Success = true,
-                Message = "Password reset code has been sent to your email. (Valid for 15 minutes)",
-                ResetToken = resetCode // Remove this in production!
-            };
+                return new ForgotPasswordResponse
+                {
+                    Success = true,
+                    Message = "Password reset code has been sent to your email. (Valid for 15 minutes)",
+                    ResetToken = isDevelopment ? resetCode : null // Only show code in development
+                };
+            }
+            else
+            {
+                // Email failed to send
+                return new ForgotPasswordResponse
+                {
+                    Success = true,
+                    Message = "If this email exists, a password reset code has been sent to it.",
+                    ResetToken = isDevelopment ? resetCode : null // Show code in dev even if email fails
+                };
+            }
         }
 
         // ===== RESET PASSWORD USING CODE =====
@@ -113,6 +132,9 @@ namespace AuthAPI.Services
             resetRecord.IsUsed = true;
 
             await _context.SaveChangesAsync();
+
+            // ===== SEND PASSWORD CHANGED NOTIFICATION =====
+            await _emailService.SendPasswordChangedEmailAsync(user.Email, user.FullName);
 
             return new PasswordResponse
             {
@@ -162,6 +184,9 @@ namespace AuthAPI.Services
             user.LastActive = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+
+            // ===== SEND PASSWORD CHANGED NOTIFICATION =====
+            await _emailService.SendPasswordChangedEmailAsync(user.Email, user.FullName);
 
             return new PasswordResponse
             {

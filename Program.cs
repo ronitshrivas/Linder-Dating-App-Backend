@@ -279,8 +279,8 @@ builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IMatchingService, MatchingService>();
 builder.Services.AddScoped<IMessageService, MessageService>();
 builder.Services.AddScoped<IModerationService, ModerationService>();
-builder.Services.AddScoped<IPasswordService, PasswordService>(); 
-
+builder.Services.AddScoped<IEmailService, EmailService>(); 
+builder.Services.AddScoped<IPasswordService, PasswordService>();
 
 // ===== 4. BUILD THE APP =====
 
