@@ -15,6 +15,7 @@ namespace AuthAPI.Data
         public DbSet<Message> Messages { get; set; }
         public DbSet<UserReport> UserReports { get; set; }
         public DbSet<UserBlock> UserBlocks { get; set; }
+        public DbSet<PasswordReset> PasswordResets { get; set; } // ✅ NEW
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -84,6 +85,13 @@ namespace AuthAPI.Data
                 .HasForeignKey(b => b.BlockedUserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // ===== PasswordReset relationship (NEW) =====
+            modelBuilder.Entity<PasswordReset>()
+                .HasOne(pr => pr.User)
+                .WithMany()
+                .HasForeignKey(pr => pr.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             // Composite indexes for performance
             modelBuilder.Entity<Match>()
                 .HasIndex(m => new { m.UserId, m.TargetUserId });
@@ -93,6 +101,10 @@ namespace AuthAPI.Data
 
             modelBuilder.Entity<UserBlock>()
                 .HasIndex(b => new { b.BlockerId, b.BlockedUserId });
+
+            // ===== Index for PasswordReset (NEW) =====
+            modelBuilder.Entity<PasswordReset>()
+                .HasIndex(pr => new { pr.UserId, pr.ResetCode, pr.IsUsed });
         }
     }
 }
