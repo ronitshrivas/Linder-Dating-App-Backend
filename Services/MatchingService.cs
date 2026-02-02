@@ -9,253 +9,347 @@ namespace AuthAPI.Services
     {
         private readonly AppDbContext _context;
 
-
-        // Add this method to the existing MatchingService.cs
-
-        public class MatchStats
-        {
-            public int TotalMatches { get; set; }
-            public int TotalLikes { get; set; }
-            public int TotalPasses { get; set; }
-            public int LikesReceived { get; set; }
-            public int SuperLikes { get; set; }
-            public double MatchRate { get; set; }
-        }
-
-        // Add this to IMatchingService interface
-        //Task<MatchStats> GetMatchStatsAsync(int userId);
-
-        // Add this implementation to MatchingService class
-        public async Task<MatchStats> GetMatchStatsAsync(int userId)
-        {
-            var totalMatches = await _context.Matches
-                .CountAsync(m => m.UserId == userId && m.IsMatch);
-
-            var totalLikes = await _context.Matches
-                .CountAsync(m => m.UserId == userId && m.Action == SwipeAction.Like);
-
-            var totalPasses = await _context.Matches
-                .CountAsync(m => m.UserId == userId && m.Action == SwipeAction.Pass);
-
-            var likesReceived = await _context.Matches
-                .CountAsync(m => m.TargetUserId == userId && m.Action == SwipeAction.Like);
-
-            var superLikes = await _context.Matches
-                .CountAsync(m => m.UserId == userId && m.Action == SwipeAction.SuperLike);
-
-            var matchRate = totalLikes > 0 ? (double)totalMatches / totalLikes * 100 : 0;
-
-            return new MatchStats
-            {
-                TotalMatches = totalMatches,
-                TotalLikes = totalLikes,
-                TotalPasses = totalPasses,
-                LikesReceived = likesReceived,
-                SuperLikes = superLikes,
-                MatchRate = Math.Round(matchRate, 2)
-            };
-        }
-
-
         public MatchingService(AppDbContext context)
         {
             _context = context;
         }
 
+        // ===== GET POTENTIAL MATCHES =====
         public async Task<List<UserMatchDto>> GetPotentialMatchesAsync(int userId, int limit = 20)
         {
-            var currentUser = await _context.Users.FindAsync(userId);
-            if (currentUser == null)
+            try
+            {
+                var currentUser = await _context.Users.FindAsync(userId);
+                if (currentUser == null)
+                    return new List<UserMatchDto>();
+
+                // Get users already swiped on
+                var swipedUserIds = await _context.Matches
+                    .Where(m => m.UserId == userId)
+                    .Select(m => m.TargetUserId)
+                    .ToListAsync();
+
+                // Get blocked users (both ways)
+                var blockedUserIds = await _context.UserBlocks
+                    .Where(b => b.BlockerId == userId || b.BlockedUserId == userId)
+                    .Select(b => b.BlockerId == userId ? b.BlockedUserId : b.BlockerId)
+                    .ToListAsync();
+
+                // Combine excluded users
+                var excludedUserIds = swipedUserIds.Union(blockedUserIds).ToList();
+
+                // Get potential matches (exclude already swiped and blocked users)
+                var potentialUsers = await _context.Users
+                    .Where(u => u.Id != userId && !excludedUserIds.Contains(u.Id))
+                    .Take(100) // Get more than needed for scoring
+                    .ToListAsync();
+
+                // If no users found, return empty list
+                if (!potentialUsers.Any())
+                    return new List<UserMatchDto>();
+
+                // Calculate match scores
+                var scoredMatches = potentialUsers
+                    .Select(user => new UserMatchDto
+                    {
+                        User = MapToUserDto(user),
+                        MatchScore = CalculateMatchScore(currentUser, user, out var breakdown),
+                        Breakdown = breakdown
+                    })
+                    .OrderByDescending(m => m.MatchScore)
+                    .Take(limit)
+                    .ToList();
+
+                return scoredMatches;
+            }
+            catch (Exception ex)
+            {
+                // Log error
+                Console.WriteLine($"Error in GetPotentialMatchesAsync: {ex.Message}");
                 return new List<UserMatchDto>();
-
-            // Get users already swiped on
-            var swipedUserIds = await _context.Matches
-                .Where(m => m.UserId == userId)
-                .Select(m => m.TargetUserId)
-                .ToListAsync();
-
-            // Get potential matches (exclude already swiped and self)
-            var potentialUsers = await _context.Users
-                .Where(u => u.Id != userId && !swipedUserIds.Contains(u.Id))
-                .Take(100) // Get more than needed for scoring
-                .ToListAsync();
-
-            // Calculate match scores
-            var scoredMatches = potentialUsers
-                .Select(user => new UserMatchDto
-                {
-                    User = MapToUserDto(user),
-                    MatchScore = CalculateMatchScore(currentUser, user, out var breakdown),
-                    Breakdown = breakdown
-                })
-                .OrderByDescending(m => m.MatchScore)
-                .Take(limit)
-                .ToList();
-
-            return scoredMatches;
+            }
         }
 
+        // ===== SWIPE ON USER =====
         public async Task<SwipeResponse> SwipeAsync(int userId, SwipeRequest request)
         {
-            // Check if already swiped
-            var existingSwipe = await _context.Matches
-                .FirstOrDefaultAsync(m => m.UserId == userId && m.TargetUserId == request.TargetUserId);
-
-            if (existingSwipe != null)
+            try
             {
+                // Check if already swiped
+                var existingSwipe = await _context.Matches
+                    .FirstOrDefaultAsync(m => m.UserId == userId && m.TargetUserId == request.TargetUserId);
+
+                if (existingSwipe != null)
+                {
+                    return new SwipeResponse
+                    {
+                        Success = false,
+                        Message = "Already swiped on this user"
+                    };
+                }
+
+                // Create swipe record
+                var match = new Match
+                {
+                    UserId = userId,
+                    TargetUserId = request.TargetUserId,
+                    Action = request.Action,
+                    SwipedAt = DateTime.UtcNow,
+                    IsMatch = false
+                };
+
+                _context.Matches.Add(match);
+
+                // If it's a LIKE or SUPERLIKE, check if there's a mutual match
+                if (request.Action == SwipeAction.Like || request.Action == SwipeAction.SuperLike)
+                {
+                    var reverseMatch = await _context.Matches
+                        .FirstOrDefaultAsync(m =>
+                            m.UserId == request.TargetUserId &&
+                            m.TargetUserId == userId &&
+                            (m.Action == SwipeAction.Like || m.Action == SwipeAction.SuperLike));
+
+                    if (reverseMatch != null)
+                    {
+                        // It's a match!
+                        match.IsMatch = true;
+                        match.MatchedAt = DateTime.UtcNow;
+                        reverseMatch.IsMatch = true;
+                        reverseMatch.MatchedAt = DateTime.UtcNow;
+
+                        await _context.SaveChangesAsync();
+
+                        var matchedUser = await _context.Users.FindAsync(request.TargetUserId);
+
+                        return new SwipeResponse
+                        {
+                            Success = true,
+                            Message = "It's a match! 🎉",
+                            IsMatch = true,
+                            MatchedUser = matchedUser != null ? MapToUserDto(matchedUser) : null
+                        };
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+
+                return new SwipeResponse
+                {
+                    Success = true,
+                    Message = request.Action == SwipeAction.Like ? "Liked!" :
+                             request.Action == SwipeAction.SuperLike ? "Super Liked!" : "Passed",
+                    IsMatch = false
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in SwipeAsync: {ex.Message}");
                 return new SwipeResponse
                 {
                     Success = false,
-                    Message = "Already swiped on this user"
+                    Message = "Failed to process swipe"
                 };
             }
-
-            // Create swipe record
-            var match = new Match
-            {
-                UserId = userId,
-                TargetUserId = request.TargetUserId,
-                Action = request.Action,
-                SwipedAt = DateTime.UtcNow,
-                IsMatch = false
-            };
-
-            _context.Matches.Add(match);
-
-            // If it's a LIKE, check if there's a mutual match
-            if (request.Action == SwipeAction.Like)
-            {
-                var reverseMatch = await _context.Matches
-                    .FirstOrDefaultAsync(m =>
-                        m.UserId == request.TargetUserId &&
-                        m.TargetUserId == userId &&
-                        m.Action == SwipeAction.Like);
-
-                if (reverseMatch != null)
-                {
-                    // It's a match!
-                    match.IsMatch = true;
-                    reverseMatch.IsMatch = true;
-
-                    await _context.SaveChangesAsync();
-
-                    var matchedUser = await _context.Users.FindAsync(request.TargetUserId);
-
-                    return new SwipeResponse
-                    {
-                        Success = true,
-                        Message = "It's a match! 🎉",
-                        IsMatch = true,
-                        MatchedUser = matchedUser != null ? MapToUserDto(matchedUser) : null
-                    };
-                }
-            }
-
-            await _context.SaveChangesAsync();
-
-            return new SwipeResponse
-            {
-                Success = true,
-                Message = request.Action == SwipeAction.Like ? "Liked!" : "Passed",
-                IsMatch = false
-            };
         }
 
+        // ===== GET MY MATCHES =====
         public async Task<List<UserDto>> GetMyMatchesAsync(int userId)
         {
-            // Get all mutual matches
-            var matchedUserIds = await _context.Matches
-                .Where(m => m.UserId == userId && m.IsMatch)
-                .Select(m => m.TargetUserId)
-                .ToListAsync();
+            try
+            {
+                // Get all mutual matches
+                var matchedUserIds = await _context.Matches
+                    .Where(m => m.UserId == userId && m.IsMatch)
+                    .Select(m => m.TargetUserId)
+                    .ToListAsync();
 
-            var matchedUsers = await _context.Users
-                .Where(u => matchedUserIds.Contains(u.Id))
-                .ToListAsync();
+                var matchedUsers = await _context.Users
+                    .Where(u => matchedUserIds.Contains(u.Id))
+                    .ToListAsync();
 
-            return matchedUsers.Select(MapToUserDto).ToList();
+                return matchedUsers.Select(MapToUserDto).ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetMyMatchesAsync: {ex.Message}");
+                return new List<UserDto>();
+            }
         }
 
+        // ===== GET LIKES RECEIVED =====
         public async Task<List<UserDto>> GetLikesReceivedAsync(int userId)
         {
-            // Get users who liked me (but I haven't swiped on yet)
-            var likedMeUserIds = await _context.Matches
-                .Where(m => m.TargetUserId == userId && m.Action == SwipeAction.Like && !m.IsMatch)
-                .Select(m => m.UserId)
-                .ToListAsync();
+            try
+            {
+                // Get users who liked me (but I haven't swiped on yet)
+                var likedMeUserIds = await _context.Matches
+                    .Where(m => m.TargetUserId == userId &&
+                               (m.Action == SwipeAction.Like || m.Action == SwipeAction.SuperLike) &&
+                               !m.IsMatch)
+                    .Select(m => m.UserId)
+                    .ToListAsync();
 
-            var usersWhoLikedMe = await _context.Users
-                .Where(u => likedMeUserIds.Contains(u.Id))
-                .ToListAsync();
+                var usersWhoLikedMe = await _context.Users
+                    .Where(u => likedMeUserIds.Contains(u.Id))
+                    .ToListAsync();
 
-            return usersWhoLikedMe.Select(MapToUserDto).ToList();
+                return usersWhoLikedMe.Select(MapToUserDto).ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetLikesReceivedAsync: {ex.Message}");
+                return new List<UserDto>();
+            }
         }
 
+        // ===== UNMATCH =====
         public async Task<bool> UnmatchAsync(int userId, int matchedUserId)
         {
-            var match1 = await _context.Matches
-                .FirstOrDefaultAsync(m => m.UserId == userId && m.TargetUserId == matchedUserId);
+            try
+            {
+                var match1 = await _context.Matches
+                    .FirstOrDefaultAsync(m => m.UserId == userId && m.TargetUserId == matchedUserId);
 
-            var match2 = await _context.Matches
-                .FirstOrDefaultAsync(m => m.UserId == matchedUserId && m.TargetUserId == userId);
+                var match2 = await _context.Matches
+                    .FirstOrDefaultAsync(m => m.UserId == matchedUserId && m.TargetUserId == userId);
 
-            if (match1 != null)
-                _context.Matches.Remove(match1);
+                if (match1 != null)
+                    _context.Matches.Remove(match1);
 
-            if (match2 != null)
-                _context.Matches.Remove(match2);
+                if (match2 != null)
+                    _context.Matches.Remove(match2);
 
-            await _context.SaveChangesAsync();
-            return true;
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in UnmatchAsync: {ex.Message}");
+                return false;
+            }
         }
 
-        // Calculate match score (0-100)
+        // ===== GET MATCH STATS =====
+        public async Task<MatchStats> GetMatchStatsAsync(int userId)
+        {
+            try
+            {
+                var totalMatches = await _context.Matches
+                    .CountAsync(m => m.UserId == userId && m.IsMatch);
+
+                var totalLikes = await _context.Matches
+                    .CountAsync(m => m.UserId == userId &&
+                               (m.Action == SwipeAction.Like || m.Action == SwipeAction.SuperLike));
+
+                var totalPasses = await _context.Matches
+                    .CountAsync(m => m.UserId == userId && m.Action == SwipeAction.Pass);
+
+                var likesReceived = await _context.Matches
+                    .CountAsync(m => m.TargetUserId == userId &&
+                               (m.Action == SwipeAction.Like || m.Action == SwipeAction.SuperLike));
+
+                var superLikes = await _context.Matches
+                    .CountAsync(m => m.UserId == userId && m.Action == SwipeAction.SuperLike);
+
+                var matchRate = totalLikes > 0 ? (double)totalMatches / totalLikes * 100 : 0;
+
+                return new MatchStats
+                {
+                    TotalMatches = totalMatches,
+                    TotalLikes = totalLikes,
+                    TotalPasses = totalPasses,
+                    LikesReceived = likesReceived,
+                    SuperLikes = superLikes,
+                    MatchRate = Math.Round(matchRate, 2)
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetMatchStatsAsync: {ex.Message}");
+                return new MatchStats
+                {
+                    TotalMatches = 0,
+                    TotalLikes = 0,
+                    TotalPasses = 0,
+                    LikesReceived = 0,
+                    SuperLikes = 0,
+                    MatchRate = 0
+                };
+            }
+        }
+
+        // ===== CALCULATE MATCH SCORE (NULL-SAFE) =====
         private double CalculateMatchScore(User currentUser, User targetUser, out MatchBreakdown breakdown)
         {
             breakdown = new MatchBreakdown();
 
-            // Parse JSON arrays
-            var currentHobbies = JsonSerializer.Deserialize<List<string>>(currentUser.Hobbies) ?? new List<string>();
-            var targetHobbies = JsonSerializer.Deserialize<List<string>>(targetUser.Hobbies) ?? new List<string>();
-            var currentInterests = JsonSerializer.Deserialize<List<string>>(currentUser.Interests) ?? new List<string>();
-            var targetInterests = JsonSerializer.Deserialize<List<string>>(targetUser.Interests) ?? new List<string>();
+            try
+            {
+                // Parse JSON arrays safely
+                var currentHobbies = SafeDeserializeList(currentUser.Hobbies);
+                var targetHobbies = SafeDeserializeList(targetUser.Hobbies);
+                var currentInterests = SafeDeserializeList(currentUser.Interests);
+                var targetInterests = SafeDeserializeList(targetUser.Interests);
 
-            // 1. Interest Compatibility (30%)
-            var commonInterests = currentInterests.Intersect(targetInterests).ToList();
-            breakdown.CommonInterests = commonInterests;
-            breakdown.InterestScore = currentInterests.Count > 0
-                ? (double)commonInterests.Count / currentInterests.Count * 30
-                : 0;
+                // 1. Interest Compatibility (30%)
+                var commonInterests = currentInterests.Intersect(targetInterests).ToList();
+                breakdown.CommonInterests = commonInterests;
+                breakdown.InterestScore = currentInterests.Count > 0
+                    ? (double)commonInterests.Count / currentInterests.Count * 30
+                    : 0;
 
-            // 2. Hobby Compatibility (25%)
-            var commonHobbies = currentHobbies.Intersect(targetHobbies).ToList();
-            breakdown.CommonHobbies = commonHobbies;
-            breakdown.HobbyScore = currentHobbies.Count > 0
-                ? (double)commonHobbies.Count / currentHobbies.Count * 25
-                : 0;
+                // 2. Hobby Compatibility (25%)
+                var commonHobbies = currentHobbies.Intersect(targetHobbies).ToList();
+                breakdown.CommonHobbies = commonHobbies;
+                breakdown.HobbyScore = currentHobbies.Count > 0
+                    ? (double)commonHobbies.Count / currentHobbies.Count * 25
+                    : 0;
 
-            // 3. Horoscope Compatibility (20%)
-            breakdown.HoroscopeScore = CalculateHoroscopeCompatibility(currentUser, targetUser);
+                // 3. Horoscope Compatibility (20%)
+                breakdown.HoroscopeScore = CalculateHoroscopeCompatibility(currentUser, targetUser);
 
-            // 4. Age Compatibility (15%)
-            var ageDiff = Math.Abs((double)(currentUser.Age - targetUser.Age));
-            breakdown.AgeCompatibility = ageDiff <= 5 ? 15 :
-                                         ageDiff <= 10 ? 10 :
-                                         ageDiff <= 15 ? 5 : 0;
+                // 4. Age Compatibility (15%) - NULL-SAFE
+                var ageDiff = Math.Abs((currentUser.Age ?? 0) - (targetUser.Age ?? 0));
+                breakdown.AgeCompatibility = ageDiff <= 5 ? 15 :
+                                             ageDiff <= 10 ? 10 :
+                                             ageDiff <= 15 ? 5 : 0;
 
-            // 5. Distance Score (10%) - assuming same city for now
-            breakdown.DistanceScore = currentUser.City == targetUser.City ? 10 : 5;
+                // 5. Distance Score (10%) - assuming same city for now
+                breakdown.DistanceScore = (currentUser.City ?? "") == (targetUser.City ?? "") ? 10 : 5;
 
-            // Total score
-            var totalScore = breakdown.InterestScore +
-                           breakdown.HobbyScore +
-                           breakdown.HoroscopeScore +
-                           breakdown.AgeCompatibility +
-                           breakdown.DistanceScore;
+                // Total score
+                var totalScore = breakdown.InterestScore +
+                               breakdown.HobbyScore +
+                               breakdown.HoroscopeScore +
+                               breakdown.AgeCompatibility +
+                               breakdown.DistanceScore;
 
-            return Math.Round(totalScore, 2);
+                return Math.Round(totalScore, 2);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error calculating match score: {ex.Message}");
+                return 0;
+            }
         }
 
+        // ===== SAFE JSON DESERIALIZATION =====
+        private List<string> SafeDeserializeList(string? json)
+        {
+            if (string.IsNullOrEmpty(json) || json == "[]")
+                return new List<string>();
+
+            try
+            {
+                return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+            }
+            catch
+            {
+                return new List<string>();
+            }
+        }
+
+        // ===== HOROSCOPE COMPATIBILITY =====
         private double CalculateHoroscopeCompatibility(User user1, User user2)
         {
             double score = 0;
@@ -264,9 +358,9 @@ namespace AuthAPI.Services
             if (!string.IsNullOrEmpty(user1.ZodiacSign) && !string.IsNullOrEmpty(user2.ZodiacSign))
             {
                 if (user1.ZodiacSign == user2.ZodiacSign)
-                    score += 7; // Same sign
+                    score += 7;
                 else if (AreCompatibleZodiacSigns(user1.ZodiacSign, user2.ZodiacSign))
-                    score += 5; // Compatible signs
+                    score += 5;
             }
 
             // Hindu Nakshatra compatibility
@@ -274,8 +368,6 @@ namespace AuthAPI.Services
             {
                 if (user1.Nakshatra == user2.Nakshatra)
                     score += 7;
-                else if (AreCompatibleNakshatras(user1.Nakshatra, user2.Nakshatra))
-                    score += 6;
             }
 
             // Chinese Zodiac compatibility
@@ -285,10 +377,9 @@ namespace AuthAPI.Services
                     score += 6;
             }
 
-            return Math.Min(score, 20); // Max 20 points
+            return Math.Min(score, 20);
         }
 
-        // Simplified zodiac compatibility (you can enhance this)
         private bool AreCompatibleZodiacSigns(string sign1, string sign2)
         {
             var compatibilityMap = new Dictionary<string, List<string>>
@@ -308,13 +399,6 @@ namespace AuthAPI.Services
             };
 
             return compatibilityMap.ContainsKey(sign1) && compatibilityMap[sign1].Contains(sign2);
-        }
-
-        private bool AreCompatibleNakshatras(string nakshatra1, string nakshatra2)
-        {
-            // Simplified - in reality, Nakshatra compatibility is very complex
-            // This is just a placeholder
-            return nakshatra1 == nakshatra2;
         }
 
         private bool AreCompatibleChineseZodiac(string zodiac1, string zodiac2)
@@ -338,29 +422,30 @@ namespace AuthAPI.Services
             return compatibilityMap.ContainsKey(zodiac1) && compatibilityMap[zodiac1].Contains(zodiac2);
         }
 
+        // ===== MAP TO DTO (NULL-SAFE) =====
         private UserDto MapToUserDto(User user)
         {
             return new UserDto
             {
                 Id = user.Id,
-                FullName = user.FullName,
-                Email = user.Email,
-               // PhoneNumber = user.PhoneNumber,
+                FullName = user.FullName ?? string.Empty,
+                Email = user.Email ?? string.Empty,
+                PhoneNumber = string.Empty,
                 DateOfBirth = user.DateOfBirth ?? DateTime.MinValue,
                 Age = user.Age ?? 0,
-                Gender = user.Gender,
+                Gender = user.Gender ?? string.Empty,
                 MaxDistance = user.MaxDistance ?? 0,
                 City = user.City,
                 State = user.State,
-                ProfilePhotos = JsonSerializer.Deserialize<List<string>>(user.ProfilePhotos) ?? new List<string>(),
-                Hobbies = JsonSerializer.Deserialize<List<string>>(user.Hobbies) ?? new List<string>(),
-                Interests = JsonSerializer.Deserialize<List<string>>(user.Interests) ?? new List<string>(),
-                ZodiacSign = user.ZodiacSign,
-                SunSign = user.SunSign,
-                MoonSign = user.MoonSign,
-                RashiSign = user.RashiSign,
-                Nakshatra = user.Nakshatra,
-                ChineseZodiac = user.ChineseZodiac,
+                ProfilePhotos = SafeDeserializeList(user.ProfilePhotos),
+                Hobbies = SafeDeserializeList(user.Hobbies),
+                Interests = SafeDeserializeList(user.Interests),
+                ZodiacSign = user.ZodiacSign ?? string.Empty,
+                SunSign = user.SunSign ?? string.Empty,
+                MoonSign = user.MoonSign ?? string.Empty,
+                RashiSign = user.RashiSign ?? string.Empty,
+                Nakshatra = user.Nakshatra ?? string.Empty,
+                ChineseZodiac = user.ChineseZodiac ?? string.Empty,
                 Bio = user.Bio,
                 Occupation = user.Occupation,
                 Education = user.Education,
@@ -369,8 +454,15 @@ namespace AuthAPI.Services
                 CreatedAt = user.CreatedAt
             };
         }
+
+        public class MatchStats
+        {
+            public int TotalMatches { get; set; }
+            public int TotalLikes { get; set; }
+            public int TotalPasses { get; set; }
+            public int LikesReceived { get; set; }
+            public int SuperLikes { get; set; }
+            public double MatchRate { get; set; }
+        }
     }
-
-
-
 }

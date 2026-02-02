@@ -78,6 +78,7 @@ namespace AuthAPI.Controllers
             var resetRequest = new ResetPasswordRequest
             {
                 Email = request.Email,
+                
                 ResetCode = request.ResetCode,
                 NewPassword = request.NewPassword
             };

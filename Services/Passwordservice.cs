@@ -214,7 +214,7 @@ namespace AuthAPI.Services
             return resetRecord;
         }
 
-        // ===== HELPER METHOD - GENERATE 6-DIGIT CODE =====
+       
         private string GenerateResetCode()
         {
             var random = new Random();

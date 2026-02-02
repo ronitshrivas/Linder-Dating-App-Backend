@@ -15,7 +15,7 @@ namespace AuthAPI.Services
 
     public class ModerationService : IModerationService
     {
-        private readonly AppDbContext _context;
+        private readonly AppDbContext _context;  
 
         public ModerationService(AppDbContext context)
         {
