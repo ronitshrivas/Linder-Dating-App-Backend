@@ -64,7 +64,7 @@ namespace Linder_DatingApp.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-                    
+
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -94,6 +94,37 @@ namespace Linder_DatingApp.Migrations
                     b.HasIndex("SenderId", "ReceiverId", "SentAt");
 
                     b.ToTable("Messages");
+                });
+
+            modelBuilder.Entity("AuthAPI.Models.PasswordReset", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsUsed")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ResetCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "ResetCode", "IsUsed");
+
+                    b.ToTable("PasswordResets");
                 });
 
             modelBuilder.Entity("AuthAPI.Models.Photo", b =>
@@ -140,17 +171,15 @@ namespace Linder_DatingApp.Migrations
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Address")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("Age")
+                    b.Property<int?>("Age")
                         .HasColumnType("int");
 
                     b.Property<string>("Bio")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ChineseZodiac")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("City")
@@ -162,7 +191,7 @@ namespace Linder_DatingApp.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime>("DateOfBirth")
+                    b.Property<DateTime?>("DateOfBirth")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Education")
@@ -177,7 +206,6 @@ namespace Linder_DatingApp.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Gender")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int?>("Height")
@@ -203,15 +231,13 @@ namespace Linder_DatingApp.Migrations
                     b.Property<DateTime?>("LastActive")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("MaxDistance")
+                    b.Property<int?>("MaxDistance")
                         .HasColumnType("int");
 
                     b.Property<string>("MoonSign")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Nakshatra")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Occupation")
@@ -221,10 +247,10 @@ namespace Linder_DatingApp.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("PreferredAgeMax")
+                    b.Property<int?>("PreferredAgeMax")
                         .HasColumnType("int");
 
-                    b.Property<int>("PreferredAgeMin")
+                    b.Property<int?>("PreferredAgeMin")
                         .HasColumnType("int");
 
                     b.Property<string>("ProfilePhotos")
@@ -232,18 +258,15 @@ namespace Linder_DatingApp.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("RashiSign")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("State")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("SunSign")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ZodiacSign")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
@@ -351,6 +374,17 @@ namespace Linder_DatingApp.Migrations
                     b.Navigation("Receiver");
 
                     b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("AuthAPI.Models.PasswordReset", b =>
+                {
+                    b.HasOne("AuthAPI.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("AuthAPI.Models.Photo", b =>

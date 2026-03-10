@@ -30,7 +30,6 @@ namespace AuthAPI.Controllers
 
             return BadRequest(result);
         }
-
         // GET: api/photo/my-photos
         [HttpGet("my-photos")]
         public async Task<IActionResult> GetMyPhotos()
