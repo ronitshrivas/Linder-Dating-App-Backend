@@ -410,6 +410,15 @@ namespace AuthAPI.Services
                 };
             }
 
+            if (user.IsBanned)
+            {
+                return new AuthResponse
+                {
+                    Success = false,
+                    Message = $"Your account has been banned. Reason: {user.BanReason ?? "Violation of terms of service"}"
+                };
+            }
+
             user.LastActive = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
@@ -484,7 +493,9 @@ namespace AuthAPI.Services
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Email, user.Email),
                 new Claim(ClaimTypes.Name, user.FullName),
-                new Claim("ProfileComplete", user.IsProfileComplete.ToString())
+                new Claim("ProfileComplete", user.IsProfileComplete.ToString()),
+                new Claim("IsAdmin", user.IsAdmin.ToString()),
+
             };
 
             if (user.IsProfileComplete && !string.IsNullOrEmpty(user.Gender))

@@ -67,6 +67,11 @@ namespace AuthAPI.Models
 
         public bool IsProfileComplete { get; set; } = false;
         public bool IsEmailVerified { get; set; } = false;
+        public bool IsAdmin { get; set; } = false;
+        public bool IsBanned { get; set; } = false;
+        public string? BanReason { get; set; }
+        public DateTime? BannedAt { get; set; }
+        public int? BannedBy { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? LastActive { get; set; }
     }

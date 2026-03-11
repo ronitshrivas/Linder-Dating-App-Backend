@@ -16,6 +16,8 @@ namespace AuthAPI.Data
         public DbSet<UserReport> UserReports { get; set; }
         public DbSet<UserBlock> UserBlocks { get; set; }
         public DbSet<PasswordReset> PasswordResets { get; set; } // ✅ NEW
+        public DbSet<AdminLog> AdminLogs { get; set; }
+        public DbSet<AppSetting> AppSettings { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

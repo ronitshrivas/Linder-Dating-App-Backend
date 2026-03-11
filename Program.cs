@@ -135,6 +135,8 @@ builder.Services.AddScoped<IMessageService, MessageService>();
 builder.Services.AddScoped<IModerationService, ModerationService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IPasswordService, PasswordService>();
+builder.Services.AddScoped<IAdminService, AdminService>();
+
 
 // ===== 4. BUILD THE APP =====
 
